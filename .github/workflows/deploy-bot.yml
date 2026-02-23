@@ -1,0 +1,113 @@
+name: Deploy Telegram Bot to home server
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Telegram Bot to home server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_SSH_PORT || 22 }}
+          script: |
+            echo "🚀 Deploying Telegram Bot to server..."
+
+            # Создаем папку проекта если не существует
+            PROJECT_DIR="/mnt/sdb1/tomilo-lib-telegram-bot"
+            mkdir -p "$PROJECT_DIR"
+            cd "$PROJECT_DIR"
+            echo "Current directory: $(pwd)"
+
+            # Клонируем или обновляем репозиторий
+            if [ ! -d .git ]; then
+              echo "Cloning repository for the first time..."
+              git clone https://github.com/${{ github.repository }}.git .
+            else
+              echo "Updating existing repository..."
+              git fetch origin
+              git reset --hard origin/main
+            fi
+
+            echo "Project contents:"
+            ls -la
+
+            # Устанавливаем Node.js через nvm
+            echo "🔧 Setting up Node.js..."
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              source "$HOME/.nvm/nvm.sh"
+            else
+              echo "Installing nvm..."
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+              source "$HOME/.nvm/nvm.sh"
+            fi
+
+            if ! nvm ls 20 &> /dev/null; then
+              echo "Installing Node.js 20..."
+              nvm install 20
+            fi
+            nvm use 20
+            nvm alias default 20
+
+            echo "Node.js version: $(node --version)"
+            echo "npm version: $(npm --version)"
+
+            # Устанавливаем зависимости
+            echo "📦 Installing dependencies..."
+            npm install
+
+            # Останавливаем старый процесс PM2
+            echo "🔄 Restarting Telegram Bot with PM2..."
+            pm2 stop tomilo-lib-bot 2>/dev/null || true
+            pm2 delete tomilo-lib-bot 2>/dev/null || true
+
+            # Создаем ecosystem файл для PM2
+            cat > ecosystem.config.js << 'EOF'
+            module.exports = {
+              apps: [{
+                name: 'tomilo-lib-bot',
+                script: 'npm',
+                args: 'start',
+                instances: 1,
+                exec_mode: 'fork',
+                env: {
+                  NODE_ENV: 'production'
+                },
+                error_file: './logs/err.log',
+                out_file: './logs/out.log',
+                log_file: './logs/combined.log',
+                time: true
+              }]
+            }
+            EOF
+
+            # Создаем папку для логов
+            mkdir -p logs
+
+            # Запускаем бота
+            pm2 start ecosystem.config.js
+
+            # Даем время на запуск
+            sleep 5
+
+            # Проверяем статус
+            echo "PM2 process list:"
+            pm2 ls
+
+            # Проверяем что бот запустился
+            echo "🔍 Checking if bot is running..."
+            if pm2 show tomilo-lib-bot | grep -q "online"; then
+              echo "✅ PM2 process is online"
+            else
+              echo "❌ PM2 process is not online"
+              pm2 logs tomilo-lib-bot --lines 20
+              exit 1
+            fi
+
+            echo "✅ Successfully deployed Telegram Bot!"
+
