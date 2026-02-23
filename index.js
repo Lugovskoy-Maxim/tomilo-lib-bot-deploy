@@ -1,26 +1,105 @@
+process.env.NTBA_FIX_350 = true; // убирает DeprecationWarning при отправке Buffer
 const TelegramBot = require('node-telegram-bot-api');
 const config = require('./config');
 const { loadState, saveState } = require('./state');
 
 const bot = new TelegramBot(config.telegramBotToken, { polling: false });
 
-function formatChapterMessage(chapter, titleName) {
-  const title = titleName || 'Без названия';
-  const num = chapter.chapterNumber;
-  const name = chapter.name ? ` — ${chapter.name}` : '';
-  const date = chapter.releaseDate
-    ? new Date(chapter.releaseDate).toLocaleDateString('ru-RU', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
+function formatChaptersLine(chapters) {
+  const nums = chapters.map((ch) => ch.chapterNumber).sort((a, b) => a - b);
+  const latest = chapters.reduce((acc, ch) => {
+    const t = ch.releaseDate ? new Date(ch.releaseDate).getTime() : 0;
+    const accT = acc.releaseDate ? new Date(acc.releaseDate).getTime() : 0;
+    return t > accT ? ch : acc;
+  }, chapters[0]);
+  const dateStr = latest.releaseDate
+    ? new Date(latest.releaseDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
     : '';
-  return `📖 <b>${escapeHtml(title)}</b>\nГлава ${num}${escapeHtml(name)}\n${date ? date + '\n' : ''}`;
+  if (nums.length === 1) {
+    const line = dateStr ? `Глава ${nums[0]} 💎 · ${dateStr}` : `Глава ${nums[0]} 💎`;
+    return line;
+  }
+  const consecutive = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+  const range = consecutive ? `Главы ${nums[0]}–${nums[nums.length - 1]}` : `Главы ${nums.join(', ')}`;
+  const line = dateStr ? `${range} 💎 · ${dateStr}` : `${range} 💎`;
+  return line;
+}
+
+/** Возрастное ограничение: 0–18 из схемы тайтла → "0+", "6+", "12+", "16+", "18+" */
+function formatAgeLimit(ageLimit) {
+  if (ageLimit === undefined || ageLimit === null) return '';
+  const n = Number(ageLimit);
+  if (Number.isNaN(n) || n < 0) return '';
+  if (n >= 18) return '18+';
+  if (n >= 16) return '16+';
+  if (n >= 12) return '12+';
+  if (n >= 6) return '6+';
+  return '0+';
+}
+
+const STATUS_LABELS = {
+  ongoing: 'Онгоинг',
+  completed: 'Завершён',
+  pause: 'Пауза',
+  cancelled: 'Отменён',
+};
+
+const TYPE_LABELS = {
+  manhwa: 'Манхва',
+  manga: 'Манга',
+  manhua: 'Маньхуа',
+  webtoon: 'Вебтун',
+  webcomic: 'Вебкомикс',
+};
+
+function translateType(type) {
+  if (!type || typeof type !== 'string') return '';
+  const key = String(type).trim().toLowerCase();
+  return TYPE_LABELS[key] || escapeHtml(type);
+}
+
+function formatChapterMessage(chapters, titleName, titleInfo = {}) {
+  const title = titleName || 'Без названия';
+  const isPlural = (Array.isArray(chapters) ? chapters.length : 1) > 1;
+  const header = isPlural ? '<b>✨ НОВЫЕ ГЛАВЫ ✨</b>' : '<b>✨ НОВАЯ ГЛАВА ✨</b>';
+  const chapterLine = formatChaptersLine(Array.isArray(chapters) ? chapters : [chapters]);
+  const ageStr = formatAgeLimit(titleInfo.ageLimit);
+  const titleLine = ageStr ? `<b>${escapeHtml(title)}</b> (${ageStr})` : `<b>${escapeHtml(title)}</b>`;
+
+  const typeStr = titleInfo.type ? translateType(titleInfo.type) : '';
+  const yearStr = titleInfo.releaseYear != null && Number(titleInfo.releaseYear) >= 1900 ? String(Number(titleInfo.releaseYear)) : '';
+  const statusStr = titleInfo.status && STATUS_LABELS[String(titleInfo.status).toLowerCase()];
+  const metaParts = [typeStr, yearStr, statusStr].filter(Boolean);
+  const metaLine = metaParts.length ? `<i>${metaParts.join(' · ')}</i>` : '';
+
+  const genres = Array.isArray(titleInfo.genres) ? titleInfo.genres : [];
+  const genreStr = genres.slice(0, 3).map((g) => escapeHtml(String(g).trim())).filter(Boolean).join(', ');
+
+  const author = titleInfo.author && String(titleInfo.author).trim() ? `Автор: ${escapeHtml(String(titleInfo.author).trim())}` : '';
+  const artist = titleInfo.artist && String(titleInfo.artist).trim() ? `Художник: ${escapeHtml(String(titleInfo.artist).trim())}` : '';
+
+  const totalCh = titleInfo.totalChapters != null && Number(titleInfo.totalChapters) > 0 ? Number(titleInfo.totalChapters) : 0;
+  const totalLine = totalCh ? `<i>Всего глав: ${totalCh}</i>` : '';
+
+  const lines = [
+    header,
+    `<b>${chapterLine}</b>`,
+    '─────────────────',
+    titleLine,
+    ...(metaLine ? [metaLine] : []),
+    ...(genreStr ? [genreStr] : []),
+    ...(author ? [author] : []),
+    ...(artist ? [artist] : []),
+    ...(totalLine ? [totalLine] : []),
+    '',
+    'Оставьте впечатления в комментариях 👇',
+  ].filter((line) => line !== undefined && line !== null);
+  return lines.join('\n');
 }
 
 function siteButton(siteUrl, titleSlug) {
   const url = `${siteUrl}/titles/${titleSlug || ''}`;
-  return { reply_markup: { inline_keyboard: [[{ text: 'Читать на сайте', url }]] } };
+  return { reply_markup: { inline_keyboard: [[{ text: 'Читать ↗', url }]] } };
 }
 
 function escapeHtml(s) {
@@ -31,17 +110,32 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
-function getImageUrl(title, chapter) {
-  const path =
-    (title && title.coverImage) ||
-    (chapter.pages && chapter.pages[0]) ||
-    '';
-  if (!path || typeof path !== 'string') return null;
-  const trimmed = path.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
-  const base = config.siteUrl.replace(/\/$/, '');
-  return trimmed.startsWith('/') ? base + trimmed : base + '/' + trimmed;
+function getImageUrl(title) {
+  const raw = title && title.coverImage;
+  if (!raw || typeof raw !== 'string') return null;
+  const path = raw.trim();
+  if (!path) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const base = config.imageBaseUrl.replace(/\/$/, '');
+  return path.startsWith('/') ? base + path : base + '/' + path;
+}
+
+/** Скачиваем картинку сами и отдаём буфер — так Telegram не таймаутит по чужому URL. */
+async function fetchImageBuffer(url, timeoutMs = 15000) {
+  try {
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'TomiloLibBot/1.0' },
+    });
+    clearTimeout(to);
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
+    return Buffer.from(buf);
+  } catch {
+    return null;
+  }
 }
 
 async function fetchLatestChapters() {
@@ -53,6 +147,21 @@ async function fetchLatestChapters() {
     throw new Error('Invalid API response');
   }
   return json.data.chapters;
+}
+
+/** Подгружаем тайтл по slug — в списке глав не всегда есть coverImage. */
+async function fetchTitleBySlug(slug) {
+  if (!slug) return null;
+  try {
+    const url = `${config.apiUrl}/titles/slug/${encodeURIComponent(slug)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json.success || !json.data) return null;
+    return json.data;
+  } catch {
+    return null;
+  }
 }
 
 async function run() {
@@ -75,35 +184,81 @@ async function run() {
     toPost.push({ chapter: ch, titleName, titleSlug, title: ch.titleId || {} });
   }
 
-  // Newest first in API, so post in reverse so oldest new chapter is first in Telegram
+  // Newest first in API, then group by title so one message per title
   toPost.reverse();
+  const byTitle = new Map();
+  for (const item of toPost) {
+    const key = item.titleSlug || item.titleName;
+    if (!byTitle.has(key)) byTitle.set(key, []);
+    byTitle.get(key).push(item);
+  }
 
-  for (const { chapter, titleName, titleSlug, title } of toPost) {
-    const text = formatChapterMessage(chapter, titleName, titleSlug);
-    const imageUrl = getImageUrl(title, chapter);
+  const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
+  for (const [, items] of byTitle) {
+    const first = items[0];
+    const { titleName, titleSlug, title } = first;
+    const chapters = items.map((i) => i.chapter);
+    // В списке глав у titleId иногда нет coverImage — подгружаем тайтл по slug
+    let titleForCover = title;
+    if (titleSlug && !(title && title.coverImage)) {
+      const full = await fetchTitleBySlug(titleSlug);
+      if (full && full.coverImage) titleForCover = full;
+    }
+    const t = titleForCover ?? title;
+    const titleInfo = {
+      ageLimit: t?.ageLimit,
+      releaseYear: t?.releaseYear,
+      type: t?.type,
+      status: t?.status,
+      genres: t?.genres,
+      author: t?.author,
+      artist: t?.artist,
+      totalChapters: t?.totalChapters,
+    };
+    const text = formatChapterMessage(chapters, titleName, titleInfo);
+    const imageUrl = getImageUrl(titleForCover);
+    if (debug) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
+    let photoPayload = imageUrl;
+    if (imageUrl) {
+      const buf = await fetchImageBuffer(imageUrl);
+      if (buf) photoPayload = buf;
+      else {
+        if (debug) console.log('Image fetch failed, will try URL');
+        else console.log('Cover fetch failed (check IMAGE_BASE_URL / cover URL):', imageUrl.slice(0, 60) + '…');
+      }
+    } else {
+      console.log('No cover for this title (set cover in admin for the title)');
+    }
     const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
     try {
-      if (imageUrl) {
-        await bot.sendPhoto(config.telegramChatId, imageUrl, {
-          caption: text,
-          ...opts,
-        });
+      if (photoPayload) {
+        const photoOpts = { caption: text, ...opts };
+        const fileOpts = Buffer.isBuffer(photoPayload)
+          ? { filename: 'cover.jpg', contentType: 'image/jpeg' }
+          : undefined;
+        await bot.sendPhoto(
+          config.telegramChatId,
+          photoPayload,
+          photoOpts,
+          fileOpts,
+        );
       } else {
         await bot.sendMessage(config.telegramChatId, text, {
           disable_web_page_preview: true,
           ...opts,
         });
       }
-      console.log(`Posted: ${titleName} ch.${chapter.chapterNumber}`);
+      const chNums = chapters.map((c) => c.chapterNumber).join(', ');
+      console.log(`Posted: ${titleName} ch.${chNums}${photoPayload ? ' (with cover)' : ' (no cover)'}`);
     } catch (e) {
       const errMsg = (e && typeof e === 'object' && 'message' in e) ? String(e.message) : '';
-      if (imageUrl && (errMsg.includes('wrong file') || errMsg.includes('failed to get'))) {
+      if (photoPayload && (errMsg.includes('wrong file') || errMsg.includes('failed to get'))) {
         try {
           await bot.sendMessage(config.telegramChatId, text, {
             disable_web_page_preview: true,
             ...opts,
           });
-          console.log(`Posted (no photo): ${titleName} ch.${chapter.chapterNumber}`);
+          console.log(`Posted (no photo): ${titleName} ch.${chapters.map((c) => c.chapterNumber).join(', ')}`);
         } catch (e2) {
           console.error('Telegram send error:', e2.message);
         }
