@@ -55,8 +55,8 @@ jobs:
               fi
               echo "Создаём .env из секретов..."
               printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\n' "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > .env
-              [ -n "$API_URL" ] && echo "API_URL=$API_URL" >> .env
-              [ -n "$SITE_URL" ] && echo "SITE_URL=$SITE_URL" >> .env
+              echo "API_URL=${API_URL:-https://tomilo-lib.ru/api}" >> .env
+              echo "SITE_URL=${SITE_URL:-https://tomilo-lib.ru}" >> .env
               echo ".env создан"
             fi
 
