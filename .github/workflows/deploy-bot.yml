@@ -28,8 +28,8 @@ jobs:
             echo "🚀 Deploying Telegram Bot to server..."
             echo "Connected to: $(hostname)"
 
-            # Создаем папку проекта если не существует
-            PROJECT_DIR="/mnt/sdb1/tomilo-lib-telegram-bot"
+            # Создаем папку проекта если не существует (отдельно от tomilo-lib-telegram-bot)
+            PROJECT_DIR="/mnt/sdb1/tomilo-lib-bot-deploy"
             mkdir -p "$PROJECT_DIR"
             cd "$PROJECT_DIR"
             echo "Current directory: $(pwd)"
@@ -86,14 +86,14 @@ jobs:
 
             # Останавливаем старый процесс PM2
             echo "🔄 Restarting Telegram Bot with PM2..."
-            pm2 stop tomilo-lib-bot 2>/dev/null || true
-            pm2 delete tomilo-lib-bot 2>/dev/null || true
+            pm2 stop tomilo-lib-bot-deploy 2>/dev/null || true
+            pm2 delete tomilo-lib-bot-deploy 2>/dev/null || true
 
             # Создаем ecosystem файл для PM2
             cat > ecosystem.config.js << 'EOF'
             module.exports = {
               apps: [{
-                name: 'tomilo-lib-bot',
+                name: 'tomilo-lib-bot-deploy',
                 script: 'npm',
                 args: 'start',
                 instances: 1,
@@ -124,11 +124,11 @@ jobs:
 
             # Проверяем что бот запустился
             echo "🔍 Checking if bot is running..."
-            if pm2 show tomilo-lib-bot | grep -q "online"; then
+            if pm2 show tomilo-lib-bot-deploy | grep -q "online"; then
               echo "✅ PM2 process is online"
             else
               echo "❌ PM2 process is not online"
-              pm2 logs tomilo-lib-bot --lines 20
+              pm2 logs tomilo-lib-bot-deploy --lines 20
               exit 1
             fi
 
