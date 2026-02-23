@@ -1,3 +1,6 @@
+# Секреты в Settings → Secrets: VM_HOST, VM_USERNAME, VM_SSH_KEY, (VM_SSH_PORT),
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID — для автоматического создания .env при первом деплое.
+# Опционально: API_URL, SITE_URL, IMAGE_BASE_URL.
 name: Deploy Telegram Bot to home server
 
 on:
@@ -7,6 +10,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      API_URL: ${{ secrets.API_URL }}
+      SITE_URL: ${{ secrets.SITE_URL }}
     steps:
       - name: Deploy Telegram Bot to home server
         uses: appleboy/ssh-action@v1.0.3
@@ -15,8 +23,10 @@ jobs:
           username: ${{ secrets.VM_USERNAME }}
           key: ${{ secrets.VM_SSH_KEY }}
           port: ${{ secrets.VM_SSH_PORT || 22 }}
+          envs: TELEGRAM_BOT_TOKEN,TELEGRAM_CHAT_ID,API_URL,SITE_URL
           script: |
             echo "🚀 Deploying Telegram Bot to server..."
+            echo "Connected to: $(hostname)"
 
             # Создаем папку проекта если не существует
             PROJECT_DIR="/mnt/sdb1/tomilo-lib-telegram-bot"
@@ -36,6 +46,19 @@ jobs:
 
             echo "Project contents:"
             ls -la
+
+            # .env обязателен для бота; при первом деплое создаём из переданных переменных
+            if [ ! -f .env ]; then
+              if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+                echo "❌ Нет .env. Добавьте секреты TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID в репозитории или создайте .env на сервере вручную."
+                exit 1
+              fi
+              echo "Создаём .env из секретов..."
+              printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\n' "$TELEGRAM_BOT_TOKEN" "$TELEGRAM_CHAT_ID" > .env
+              [ -n "$API_URL" ] && echo "API_URL=$API_URL" >> .env
+              [ -n "$SITE_URL" ] && echo "SITE_URL=$SITE_URL" >> .env
+              echo ".env создан"
+            fi
 
             # Устанавливаем Node.js через nvm
             echo "🔧 Setting up Node.js..."
@@ -108,6 +131,9 @@ jobs:
               pm2 logs tomilo-lib-bot --lines 20
               exit 1
             fi
+
+            # Сохраняем список PM2 для автозапуска после перезагрузки (pm2 startup — один раз на сервере)
+            pm2 save 2>/dev/null || true
 
             echo "✅ Successfully deployed Telegram Bot!"
 

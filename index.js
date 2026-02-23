@@ -83,9 +83,10 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}) {
 
   const lines = [
     header,
-    `<b>${chapterLine}</b>`,
-    '─────────────────',
+    '',
     titleLine,
+    chapterLine,
+    '─────────────────',
     ...(metaLine ? [metaLine] : []),
     ...(genreStr ? [genreStr] : []),
     ...(author ? [author] : []),
