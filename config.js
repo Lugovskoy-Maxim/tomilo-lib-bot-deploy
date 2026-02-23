@@ -16,3 +16,4 @@ module.exports = {
   pollIntervalMs: Math.max(60_000, parseInt(process.env.POLL_INTERVAL_MS || '300000', 10)),
   statePath: process.env.STATE_PATH || '.bot-state.json',
 };
+
