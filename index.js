@@ -124,19 +124,38 @@ function isTitleCreatedToday(createdAt) {
   return d.toISOString().slice(0, 10) === getTodayString();
 }
 
-/** Сообщение для тайтла, добавленного сегодня — одно на день. */
+/** Короткое описание (обрезаем по длине). */
+const NEW_TITLE_DESCRIPTION_MAX_LEN = 280;
+
 function formatNewTitleMessage(titleName, titleInfo = {}) {
   const name = titleName || 'Без названия';
   const ageStr = formatAgeLimit(titleInfo.ageLimit);
   const titleLine = ageStr ? `<b>${escapeHtml(name)}</b> (${ageStr})` : `<b>${escapeHtml(name)}</b>`;
   const typeStr = titleInfo.type ? translateType(titleInfo.type) : '';
-  const metaParts = [typeStr].filter(Boolean);
+  const yearStr = titleInfo.releaseYear != null && Number(titleInfo.releaseYear) >= 1900 ? String(Number(titleInfo.releaseYear)) : '';
+  const metaParts = [typeStr, yearStr].filter(Boolean);
   const metaLine = metaParts.length ? `<i>${metaParts.join(' · ')}</i>` : '';
+  const totalCh = titleInfo.totalChapters != null && Number(titleInfo.totalChapters) >= 0 ? Number(titleInfo.totalChapters) : null;
+  const totalLine = totalCh != null ? `Глав: ${totalCh}` : '';
+  let descLine = '';
+  const rawDesc = titleInfo.description || titleInfo.shortDescription || '';
+  if (rawDesc && typeof rawDesc === 'string') {
+    const trimmed = rawDesc.trim();
+    if (trimmed) {
+      const short = trimmed.length > NEW_TITLE_DESCRIPTION_MAX_LEN
+        ? trimmed.slice(0, NEW_TITLE_DESCRIPTION_MAX_LEN).trim() + '…'
+        : trimmed;
+      descLine = escapeHtml(short);
+    }
+  }
   const lines = [
     '<b>✨ Новый тайтл на сайте ✨</b>',
     '',
     titleLine,
-    ...(metaLine ? [metaLine, ''] : []),
+    ...(metaLine ? [metaLine] : []),
+    ...(totalLine ? [totalLine] : []),
+    ...(descLine ? ['', descLine] : []),
+    '',
     'Оставьте впечатления в комментариях 👇',
   ].filter(Boolean);
   return lines.join('\n');
@@ -279,14 +298,62 @@ async function run() {
       author: t?.author,
       artist: t?.artist,
       totalChapters: t?.totalChapters,
+      description: t?.description,
+      shortDescription: t?.shortDescription,
     };
 
     const isNewTitleToday = isTitleCreatedToday(t?.createdAt);
     if (isNewTitleToday) {
-      if (existing && existing.date === today && existing.messageId) {
-        console.log(`Skip (already posted "new title" today): ${titleName}`);
+      const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
+      const isEditNewTitle = existing && existing.date === today && existing.messageId && existing.isNewTitle;
+
+      if (isEditNewTitle) {
+        const mergedChapters = (existing.chapters && existing.chapters.length)
+          ? mergeChapters(existing.chapters, newChapters)
+          : newChapters;
+        const updatedTitle = await fetchTitleBySlug(titleSlug);
+        const updatedT = updatedTitle || t;
+        const updatedInfo = {
+          ...titleInfo,
+          totalChapters: updatedT?.totalChapters != null ? updatedT.totalChapters : (mergedChapters.length || titleInfo.totalChapters),
+          description: updatedT?.description ?? titleInfo.description,
+          shortDescription: updatedT?.shortDescription ?? titleInfo.shortDescription,
+        };
+        const text = formatNewTitleMessage(titleName, updatedInfo);
+        try {
+          if (existing.hasPhoto) {
+            await bot.editMessageCaption(text, {
+              chat_id: config.telegramChatId,
+              message_id: existing.messageId,
+              ...opts,
+            });
+          } else {
+            await bot.editMessageText(text, {
+              chat_id: config.telegramChatId,
+              message_id: existing.messageId,
+              disable_web_page_preview: true,
+              ...opts,
+            });
+          }
+          state.titleMessages[key] = {
+            ...existing,
+            chapters: mergedChapters,
+          };
+          console.log(`Updated (new title): ${titleName}, глав: ${updatedInfo.totalChapters}`);
+          continue;
+        } catch (editErr) {
+          if (debug) console.log('Edit new-title message failed:', editErr.message);
+        }
+      }
+
+      if (existing && existing.date === today && existing.messageId && !existing.isNewTitle) {
         continue;
       }
+      if (isEditNewTitle) {
+        // редактирование не сработало — отправляем как новое не будем, уже есть сообщение
+        continue;
+      }
+
       const text = formatNewTitleMessage(titleName, titleInfo);
       const imageUrl = getImageUrl(titleForCover);
       let photoPayload = imageUrl;
@@ -294,7 +361,6 @@ async function run() {
         const buf = await fetchImageBuffer(imageUrl);
         if (buf) photoPayload = buf;
       }
-      const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
       try {
         let result;
         if (photoPayload) {
@@ -318,7 +384,7 @@ async function run() {
             date: today,
             hasPhoto: !!photoPayload,
             isNewTitle: true,
-            chapters: [],
+            chapters: newChapters,
           };
         }
         console.log(`Posted (new title today): ${titleName}`);
