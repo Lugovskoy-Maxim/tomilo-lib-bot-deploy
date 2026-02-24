@@ -111,6 +111,46 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
+/** Дата в формате YYYY-MM-DD (UTC) для сравнения "сегодня". */
+function getTodayString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** true, если дата создания тайтла совпадает с сегодняшним днём (UTC). */
+function isTitleCreatedToday(createdAt) {
+  if (!createdAt) return false;
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.toISOString().slice(0, 10) === getTodayString();
+}
+
+/** Сообщение для тайтла, добавленного сегодня — одно на день. */
+function formatNewTitleMessage(titleName, titleInfo = {}) {
+  const name = titleName || 'Без названия';
+  const ageStr = formatAgeLimit(titleInfo.ageLimit);
+  const titleLine = ageStr ? `<b>${escapeHtml(name)}</b> (${ageStr})` : `<b>${escapeHtml(name)}</b>`;
+  const typeStr = titleInfo.type ? translateType(titleInfo.type) : '';
+  const metaParts = [typeStr].filter(Boolean);
+  const metaLine = metaParts.length ? `<i>${metaParts.join(' · ')}</i>` : '';
+  const lines = [
+    '<b>✨ Новый тайтл на сайте ✨</b>',
+    '',
+    titleLine,
+    ...(metaLine ? [metaLine, ''] : []),
+    'Оставьте впечатления в комментариях 👇',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+/** Объединяет уже показанные главы с новыми, без дубликатов по chapterNumber. */
+function mergeChapters(existing, newChapters) {
+  const byNum = new Map(existing.map((c) => [c.chapterNumber, c]));
+  for (const c of newChapters) {
+    byNum.set(c.chapterNumber, { chapterNumber: c.chapterNumber, releaseDate: c.releaseDate });
+  }
+  return [...byNum.values()].sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
+}
+
 function getImageUrl(title) {
   const raw = title && title.coverImage;
   if (!raw || typeof raw !== 'string') return null;
@@ -170,6 +210,12 @@ async function run() {
   let lastProcessed = state.lastProcessedReleaseDate
     ? new Date(state.lastProcessedReleaseDate).getTime()
     : null;
+  const initialLastProcessedStr =
+    state.lastProcessedReleaseDate && typeof state.lastProcessedReleaseDate.toISOString === 'function'
+      ? state.lastProcessedReleaseDate.toISOString()
+      : state.lastProcessedReleaseDate
+        ? String(state.lastProcessedReleaseDate)
+        : null;
 
   const chapters = await fetchLatestChapters();
   const toPost = [];
@@ -195,15 +241,33 @@ async function run() {
   }
 
   const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
+  const today = getTodayString();
+  if (!state.titleMessages) state.titleMessages = {};
+
   for (const [, items] of byTitle) {
     const first = items[0];
     const { titleName, titleSlug, title } = first;
-    const chapters = items.map((i) => i.chapter);
-    // В списке глав у titleId иногда нет coverImage — подгружаем тайтл по slug
+    const key = titleSlug || titleName;
+    const newChapters = items.map((i) => ({
+      chapterNumber: i.chapter.chapterNumber,
+      releaseDate: i.chapter.releaseDate,
+    }));
+    const existing = state.titleMessages[key];
+
+    let chaptersToShow;
+    let isEdit = false;
+    if (existing && existing.date === today && existing.messageId && existing.chapters) {
+      chaptersToShow = mergeChapters(existing.chapters, newChapters);
+      isEdit = true;
+    } else {
+      chaptersToShow = newChapters;
+    }
+
+    // Подгружаем тайтл по slug (coverImage и createdAt могут быть только в полном ответе)
     let titleForCover = title;
-    if (titleSlug && !(title && title.coverImage)) {
+    if (titleSlug) {
       const full = await fetchTitleBySlug(titleSlug);
-      if (full && full.coverImage) titleForCover = full;
+      if (full) titleForCover = full;
     }
     const t = titleForCover ?? title;
     const titleInfo = {
@@ -216,7 +280,55 @@ async function run() {
       artist: t?.artist,
       totalChapters: t?.totalChapters,
     };
-    const text = formatChapterMessage(chapters, titleName, titleInfo);
+
+    const isNewTitleToday = isTitleCreatedToday(t?.createdAt);
+    if (isNewTitleToday) {
+      if (existing && existing.date === today && existing.messageId) {
+        console.log(`Skip (already posted "new title" today): ${titleName}`);
+        continue;
+      }
+      const text = formatNewTitleMessage(titleName, titleInfo);
+      const imageUrl = getImageUrl(titleForCover);
+      let photoPayload = imageUrl;
+      if (imageUrl) {
+        const buf = await fetchImageBuffer(imageUrl);
+        if (buf) photoPayload = buf;
+      }
+      const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
+      try {
+        let result;
+        if (photoPayload) {
+          result = await bot.sendPhoto(
+            config.telegramChatId,
+            photoPayload,
+            { caption: text, ...opts },
+            Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
+          );
+        } else {
+          result = await bot.sendMessage(config.telegramChatId, text, {
+            disable_web_page_preview: true,
+            ...opts,
+          });
+        }
+        const messageId = result && result.message_id;
+        if (messageId) {
+          state.titleMessages[key] = {
+            messageId,
+            chatId: config.telegramChatId,
+            date: today,
+            hasPhoto: !!photoPayload,
+            isNewTitle: true,
+            chapters: [],
+          };
+        }
+        console.log(`Posted (new title today): ${titleName}`);
+      } catch (e) {
+        console.error('Telegram send error:', e.message);
+      }
+      continue;
+    }
+
+    const text = formatChapterMessage(chaptersToShow, titleName, titleInfo);
     const imageUrl = getImageUrl(titleForCover);
     if (debug) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
     let photoPayload = imageUrl;
@@ -231,35 +343,90 @@ async function run() {
       console.log('No cover for this title (set cover in admin for the title)');
     }
     const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
+
+    if (isEdit && existing) {
+      try {
+        if (existing.hasPhoto) {
+          await bot.editMessageCaption(text, {
+            chat_id: config.telegramChatId,
+            message_id: existing.messageId,
+            ...opts,
+          });
+        } else {
+          await bot.editMessageText(text, {
+            chat_id: config.telegramChatId,
+            message_id: existing.messageId,
+            disable_web_page_preview: true,
+            ...opts,
+          });
+        }
+        state.titleMessages[key] = {
+          messageId: existing.messageId,
+          chatId: config.telegramChatId,
+          date: today,
+          hasPhoto: existing.hasPhoto,
+          chapters: chaptersToShow,
+        };
+        const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
+        console.log(`Updated: ${titleName} ch.${chNums}`);
+        continue;
+      } catch (editErr) {
+        const errMsg = (editErr && typeof editErr === 'object' && 'message' in editErr) ? String(editErr.message) : '';
+        if (debug) console.log('Edit failed, will send new message:', errMsg);
+        isEdit = false;
+      }
+    }
+
     try {
+      let result;
       if (photoPayload) {
         const photoOpts = { caption: text, ...opts };
         const fileOpts = Buffer.isBuffer(photoPayload)
           ? { filename: 'cover.jpg', contentType: 'image/jpeg' }
           : undefined;
-        await bot.sendPhoto(
+        result = await bot.sendPhoto(
           config.telegramChatId,
           photoPayload,
           photoOpts,
           fileOpts,
         );
       } else {
-        await bot.sendMessage(config.telegramChatId, text, {
+        result = await bot.sendMessage(config.telegramChatId, text, {
           disable_web_page_preview: true,
           ...opts,
         });
       }
-      const chNums = chapters.map((c) => c.chapterNumber).join(', ');
+      const messageId = result && result.message_id;
+      if (messageId) {
+        state.titleMessages[key] = {
+          messageId,
+          chatId: config.telegramChatId,
+          date: today,
+          hasPhoto: !!photoPayload,
+          chapters: chaptersToShow,
+        };
+      }
+      const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
       console.log(`Posted: ${titleName} ch.${chNums}${photoPayload ? ' (with cover)' : ' (no cover)'}`);
     } catch (e) {
       const errMsg = (e && typeof e === 'object' && 'message' in e) ? String(e.message) : '';
       if (photoPayload && (errMsg.includes('wrong file') || errMsg.includes('failed to get'))) {
         try {
-          await bot.sendMessage(config.telegramChatId, text, {
+          const result = await bot.sendMessage(config.telegramChatId, text, {
             disable_web_page_preview: true,
             ...opts,
           });
-          console.log(`Posted (no photo): ${titleName} ch.${chapters.map((c) => c.chapterNumber).join(', ')}`);
+          const messageId = result && result.message_id;
+          if (messageId) {
+            state.titleMessages[key] = {
+              messageId,
+              chatId: config.telegramChatId,
+              date: today,
+              hasPhoto: false,
+              chapters: chaptersToShow,
+            };
+          }
+          console.log(`Posted (no photo): ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(', ')}`);
         } catch (e2) {
           console.error('Telegram send error:', e2.message);
         }
@@ -269,11 +436,18 @@ async function run() {
     }
   }
 
-  if (maxSeen > 0) {
-    saveState(config.statePath, {
-      lastProcessedReleaseDate: new Date(maxSeen).toISOString(),
-    });
+  // Оставляем в state только сообщения за сегодня, чтобы не раздувать файл
+  const prunedTitleMessages = {};
+  for (const [k, v] of Object.entries(state.titleMessages || {})) {
+    if (v && v.date === today) prunedTitleMessages[k] = v;
   }
+
+  const lastProcessedStr =
+    maxSeen > 0 ? new Date(maxSeen).toISOString() : initialLastProcessedStr;
+  saveState(config.statePath, {
+    lastProcessedReleaseDate: lastProcessedStr || undefined,
+    titleMessages: prunedTitleMessages,
+  });
 }
 
 async function loop() {

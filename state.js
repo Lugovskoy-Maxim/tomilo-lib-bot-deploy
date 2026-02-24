@@ -7,10 +7,11 @@ function loadState(statePath) {
     const data = JSON.parse(raw);
     return {
       lastProcessedReleaseDate: data.lastProcessedReleaseDate ? new Date(data.lastProcessedReleaseDate) : null,
+      titleMessages: data.titleMessages && typeof data.titleMessages === 'object' ? data.titleMessages : {},
     };
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('State load error:', e.message);
-    return { lastProcessedReleaseDate: null };
+    return { lastProcessedReleaseDate: null, titleMessages: {} };
   }
 }
 
