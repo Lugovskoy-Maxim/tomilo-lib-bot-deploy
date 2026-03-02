@@ -5,6 +5,75 @@ const { loadState, saveState } = require('./state');
 
 const bot = new TelegramBot(config.telegramBotToken, { polling: false });
 
+const DEBUG = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
+
+// Telegram limits (practical): photo caption <= 1024 chars, message text <= 4096 chars.
+const TG_MAX_CAPTION_LEN = 1024;
+const TG_MAX_MESSAGE_LEN = 4096;
+
+function clampText(s, maxLen) {
+  if (!s) return '';
+  const str = String(s);
+  if (str.length <= maxLen) return str;
+  return str.slice(0, Math.max(0, maxLen - 1)) + '…';
+}
+
+function stripHtmlTags(s) {
+  return String(s || '').replace(/<[^>]*>/g, '');
+}
+
+function looksLikeCaptionTooLongError(msg) {
+  const m = String(msg || '').toLowerCase();
+  return m.includes('caption is too long') || m.includes('message caption is too long');
+}
+
+async function sendMessageSafe(text, opts) {
+  const raw = String(text || '');
+  if (raw.length <= TG_MAX_MESSAGE_LEN) {
+    return bot.sendMessage(config.telegramChatId, raw, {
+      disable_web_page_preview: true,
+      ...opts,
+    });
+  }
+
+  // Если текст слишком длинный, лучше отправить как plain-text, чтобы не словить ошибки HTML entities.
+  const plain = clampText(stripHtmlTags(raw), TG_MAX_MESSAGE_LEN);
+  const { parse_mode, ...rest } = opts || {};
+  if (DEBUG) console.log(`Message too long (${raw.length}), sending plain-text truncated`);
+  return bot.sendMessage(config.telegramChatId, plain, {
+    disable_web_page_preview: true,
+    ...rest,
+  });
+}
+
+async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
+  const caption = String(text || '');
+  const usePhoto = !!photoPayload && caption.length <= TG_MAX_CAPTION_LEN;
+
+  if (!usePhoto) {
+    if (photoPayload && caption.length > TG_MAX_CAPTION_LEN && DEBUG) {
+      console.log(`Caption too long for sendPhoto (${caption.length}), sending text-only`);
+    }
+    return sendMessageSafe(caption, opts);
+  }
+
+  try {
+    return await bot.sendPhoto(
+      config.telegramChatId,
+      photoPayload,
+      { caption, ...opts },
+      fileOpts,
+    );
+  } catch (e) {
+    const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : '';
+    if (looksLikeCaptionTooLongError(msg)) {
+      if (DEBUG) console.log('sendPhoto failed: caption too long, retrying as text-only');
+      return sendMessageSafe(caption, opts);
+    }
+    throw e;
+  }
+}
+
 function formatChaptersLine(chapters) {
   const nums = chapters.map((ch) => ch.chapterNumber).sort((a, b) => a - b);
   const latest = chapters.reduce((acc, ch) => {
@@ -256,17 +325,17 @@ async function run() {
         ? String(state.lastProcessedTitleCreatedAt)
         : null;
 
-  const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
   const today = getTodayString();
   if (!state.titleMessages) state.titleMessages = {};
 
   // ======== Обработка новых тайтлов (независимо от глав) ========
   let maxSeenTitle = lastProcessedTitle;
+  let maxNotifiedTitle = lastProcessedTitle;
   try {
     const titles = await fetchLatestTitles();
     const newTitles = [];
 
-    if (debug) {
+    if (DEBUG) {
       console.log(`Fetched ${titles.length} titles, lastProcessedTitle: ${lastProcessedTitle ? new Date(lastProcessedTitle).toISOString() : 'null'}`);
     }
 
@@ -275,10 +344,10 @@ async function run() {
       if (createdTime > 0) maxSeenTitle = Math.max(maxSeenTitle || 0, createdTime);
       if (lastProcessedTitle != null && createdTime <= lastProcessedTitle) continue;
       if (!isTitleCreatedToday(title.createdAt)) {
-        if (debug) console.log(`Skipping "${title.name}" - not created today (${title.createdAt})`);
+        if (DEBUG) console.log(`Skipping "${title.name}" - not created today (${title.createdAt})`);
         continue;
       }
-      if (debug) console.log(`New title candidate: "${title.name}" created at ${title.createdAt}`);
+      if (DEBUG) console.log(`New title candidate: "${title.name}" created at ${title.createdAt}`);
       newTitles.push(title);
     }
 
@@ -292,10 +361,11 @@ async function run() {
       const titleName = title.name || 'Без названия';
       const titleSlug = title.slug || '';
       const key = titleSlug || titleName;
+      const createdTime = title.createdAt ? new Date(title.createdAt).getTime() : 0;
 
       const existing = state.titleMessages[key];
       if (existing && existing.date === today && existing.messageId) {
-        if (debug) console.log(`Skipping already notified title: ${titleName}`);
+        if (DEBUG) console.log(`Skipping already notified title: ${titleName}`);
         continue;
       }
 
@@ -323,20 +393,12 @@ async function run() {
       const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
 
       try {
-        let result;
-        if (photoPayload) {
-          result = await bot.sendPhoto(
-            config.telegramChatId,
-            photoPayload,
-            { caption: text, ...opts },
-            Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
-          );
-        } else {
-          result = await bot.sendMessage(config.telegramChatId, text, {
-            disable_web_page_preview: true,
-            ...opts,
-          });
-        }
+        const result = await sendPhotoOrMessage({
+          photoPayload,
+          text,
+          opts,
+          fileOpts: Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
+        });
         const messageId = result && result.message_id;
         if (messageId) {
           state.titleMessages[key] = {
@@ -348,6 +410,7 @@ async function run() {
             chapters: [],
           };
         }
+        if (createdTime > 0) maxNotifiedTitle = Math.max(maxNotifiedTitle || 0, createdTime);
         console.log(`Posted (new title): ${titleName}`);
       } catch (e) {
         console.error('Telegram send error (new title):', e.message);
@@ -361,6 +424,7 @@ async function run() {
   const chapters = await fetchLatestChapters();
   const toPost = [];
   let maxSeen = lastProcessed;
+  let maxNotified = lastProcessed;
 
   for (const ch of chapters) {
     const title = ch.titleId || {};
@@ -369,7 +433,7 @@ async function run() {
     const releaseTime = ch.releaseDate ? new Date(ch.releaseDate).getTime() : 0;
     if (releaseTime > 0) maxSeen = Math.max(maxSeen || 0, releaseTime);
     if (lastProcessed != null && releaseTime <= lastProcessed) continue;
-    toPost.push({ chapter: ch, titleName, titleSlug, title: ch.titleId || {} });
+    toPost.push({ chapter: ch, titleName, titleSlug, title: ch.titleId || {}, releaseTime });
   }
 
   // Newest first in API, then group by title so one message per title
@@ -385,6 +449,7 @@ async function run() {
     const first = items[0];
     const { titleName, titleSlug, title } = first;
     const key = titleSlug || titleName;
+    const groupMaxReleaseTime = items.reduce((acc, it) => Math.max(acc, it.releaseTime || 0), 0);
     const newChapters = items.map((i) => ({
       chapterNumber: i.chapter.chapterNumber,
       releaseDate: i.chapter.releaseDate,
@@ -457,10 +522,11 @@ async function run() {
             ...existing,
             chapters: mergedChapters,
           };
+          if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
           console.log(`Updated (new title): ${titleName}, глав: ${updatedInfo.totalChapters}`);
           continue;
         } catch (editErr) {
-          if (debug) console.log('Edit new-title message failed:', editErr.message);
+          if (DEBUG) console.log('Edit new-title message failed:', editErr.message);
         }
       }
 
@@ -480,20 +546,12 @@ async function run() {
         if (buf) photoPayload = buf;
       }
       try {
-        let result;
-        if (photoPayload) {
-          result = await bot.sendPhoto(
-            config.telegramChatId,
-            photoPayload,
-            { caption: text, ...opts },
-            Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
-          );
-        } else {
-          result = await bot.sendMessage(config.telegramChatId, text, {
-            disable_web_page_preview: true,
-            ...opts,
-          });
-        }
+        const result = await sendPhotoOrMessage({
+          photoPayload,
+          text,
+          opts,
+          fileOpts: Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
+        });
         const messageId = result && result.message_id;
         if (messageId) {
           state.titleMessages[key] = {
@@ -505,6 +563,7 @@ async function run() {
             chapters: newChapters,
           };
         }
+        if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
         console.log(`Posted (new title today): ${titleName}`);
       } catch (e) {
         console.error('Telegram send error:', e.message);
@@ -514,13 +573,13 @@ async function run() {
 
     const text = formatChapterMessage(chaptersToShow, titleName, titleInfo);
     const imageUrl = getImageUrl(titleForCover);
-    if (debug) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
+    if (DEBUG) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
     let photoPayload = imageUrl;
     if (imageUrl) {
       const buf = await fetchImageBuffer(imageUrl);
       if (buf) photoPayload = buf;
       else {
-        if (debug) console.log('Image fetch failed, will try URL');
+        if (DEBUG) console.log('Image fetch failed, will try URL');
         else console.log('Cover fetch failed (check IMAGE_BASE_URL / cover URL):', imageUrl.slice(0, 60) + '…');
       }
     } else {
@@ -551,35 +610,24 @@ async function run() {
           hasPhoto: existing.hasPhoto,
           chapters: chaptersToShow,
         };
+        if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
         const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
         console.log(`Updated: ${titleName} ch.${chNums}`);
         continue;
       } catch (editErr) {
         const errMsg = (editErr && typeof editErr === 'object' && 'message' in editErr) ? String(editErr.message) : '';
-        if (debug) console.log('Edit failed, will send new message:', errMsg);
+        if (DEBUG) console.log('Edit failed, will send new message:', errMsg);
         isEdit = false;
       }
     }
 
     try {
-      let result;
-      if (photoPayload) {
-        const photoOpts = { caption: text, ...opts };
-        const fileOpts = Buffer.isBuffer(photoPayload)
-          ? { filename: 'cover.jpg', contentType: 'image/jpeg' }
-          : undefined;
-        result = await bot.sendPhoto(
-          config.telegramChatId,
-          photoPayload,
-          photoOpts,
-          fileOpts,
-        );
-      } else {
-        result = await bot.sendMessage(config.telegramChatId, text, {
-          disable_web_page_preview: true,
-          ...opts,
-        });
-      }
+      const result = await sendPhotoOrMessage({
+        photoPayload,
+        text,
+        opts,
+        fileOpts: Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
+      });
       const messageId = result && result.message_id;
       if (messageId) {
         state.titleMessages[key] = {
@@ -590,16 +638,14 @@ async function run() {
           chapters: chaptersToShow,
         };
       }
+      if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
       const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
       console.log(`Posted: ${titleName} ch.${chNums}${photoPayload ? ' (with cover)' : ' (no cover)'}`);
     } catch (e) {
       const errMsg = (e && typeof e === 'object' && 'message' in e) ? String(e.message) : '';
       if (photoPayload && (errMsg.includes('wrong file') || errMsg.includes('failed to get'))) {
         try {
-          const result = await bot.sendMessage(config.telegramChatId, text, {
-            disable_web_page_preview: true,
-            ...opts,
-          });
+          const result = await sendMessageSafe(text, opts);
           const messageId = result && result.message_id;
           if (messageId) {
             state.titleMessages[key] = {
@@ -610,6 +656,7 @@ async function run() {
               chapters: chaptersToShow,
             };
           }
+          if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
           console.log(`Posted (no photo): ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(', ')}`);
         } catch (e2) {
           console.error('Telegram send error:', e2.message);
@@ -627,9 +674,9 @@ async function run() {
   }
 
   const lastProcessedStr =
-    maxSeen > 0 ? new Date(maxSeen).toISOString() : initialLastProcessedStr;
+    maxNotified > 0 ? new Date(maxNotified).toISOString() : initialLastProcessedStr;
   const lastProcessedTitleStr =
-    maxSeenTitle > 0 ? new Date(maxSeenTitle).toISOString() : initialLastProcessedTitleStr;
+    maxNotifiedTitle > 0 ? new Date(maxNotifiedTitle).toISOString() : initialLastProcessedTitleStr;
   saveState(config.statePath, {
     lastProcessedReleaseDate: lastProcessedStr || undefined,
     lastProcessedTitleCreatedAt: lastProcessedTitleStr || undefined,
