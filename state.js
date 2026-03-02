@@ -7,11 +7,12 @@ function loadState(statePath) {
     const data = JSON.parse(raw);
     return {
       lastProcessedReleaseDate: data.lastProcessedReleaseDate ? new Date(data.lastProcessedReleaseDate) : null,
+      lastProcessedTitleCreatedAt: data.lastProcessedTitleCreatedAt ? new Date(data.lastProcessedTitleCreatedAt) : null,
       titleMessages: data.titleMessages && typeof data.titleMessages === 'object' ? data.titleMessages : {},
     };
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('State load error:', e.message);
-    return { lastProcessedReleaseDate: null, titleMessages: {} };
+    return { lastProcessedReleaseDate: null, lastProcessedTitleCreatedAt: null, titleMessages: {} };
   }
 }
 

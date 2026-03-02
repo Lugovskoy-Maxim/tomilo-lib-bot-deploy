@@ -209,6 +209,17 @@ async function fetchLatestChapters() {
   return json.data.chapters;
 }
 
+async function fetchLatestTitles() {
+  const url = `${config.apiUrl}/titles?page=1&limit=20&sortBy=createdAt&sortOrder=desc`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API titles ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  if (!json.success || !json.data || !Array.isArray(json.data.titles)) {
+    throw new Error('Invalid API response for titles');
+  }
+  return json.data.titles;
+}
+
 /** Подгружаем тайтл по slug — в списке глав не всегда есть coverImage. */
 async function fetchTitleBySlug(slug) {
   if (!slug) return null;
@@ -229,13 +240,111 @@ async function run() {
   let lastProcessed = state.lastProcessedReleaseDate
     ? new Date(state.lastProcessedReleaseDate).getTime()
     : null;
+  let lastProcessedTitle = state.lastProcessedTitleCreatedAt
+    ? new Date(state.lastProcessedTitleCreatedAt).getTime()
+    : null;
   const initialLastProcessedStr =
     state.lastProcessedReleaseDate && typeof state.lastProcessedReleaseDate.toISOString === 'function'
       ? state.lastProcessedReleaseDate.toISOString()
       : state.lastProcessedReleaseDate
         ? String(state.lastProcessedReleaseDate)
         : null;
+  const initialLastProcessedTitleStr =
+    state.lastProcessedTitleCreatedAt && typeof state.lastProcessedTitleCreatedAt.toISOString === 'function'
+      ? state.lastProcessedTitleCreatedAt.toISOString()
+      : state.lastProcessedTitleCreatedAt
+        ? String(state.lastProcessedTitleCreatedAt)
+        : null;
 
+  const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
+  const today = getTodayString();
+  if (!state.titleMessages) state.titleMessages = {};
+
+  // ======== Обработка новых тайтлов (независимо от глав) ========
+  let maxSeenTitle = lastProcessedTitle;
+  try {
+    const titles = await fetchLatestTitles();
+    const newTitles = [];
+
+    for (const title of titles) {
+      const createdTime = title.createdAt ? new Date(title.createdAt).getTime() : 0;
+      if (createdTime > 0) maxSeenTitle = Math.max(maxSeenTitle || 0, createdTime);
+      if (lastProcessedTitle != null && createdTime <= lastProcessedTitle) continue;
+      newTitles.push(title);
+    }
+
+    newTitles.reverse();
+
+    for (const title of newTitles) {
+      const titleName = title.name || 'Без названия';
+      const titleSlug = title.slug || '';
+      const key = titleSlug || titleName;
+
+      const existing = state.titleMessages[key];
+      if (existing && existing.date === today && existing.messageId) {
+        if (debug) console.log(`Skipping already notified title: ${titleName}`);
+        continue;
+      }
+
+      const titleInfo = {
+        ageLimit: title.ageLimit,
+        releaseYear: title.releaseYear,
+        type: title.type,
+        status: title.status,
+        genres: title.genres,
+        author: title.author,
+        artist: title.artist,
+        totalChapters: title.totalChapters || 0,
+        description: title.description,
+        shortDescription: title.shortDescription,
+      };
+
+      const text = formatNewTitleMessage(titleName, titleInfo);
+      const imageUrl = getImageUrl(title);
+      let photoPayload = imageUrl;
+      if (imageUrl) {
+        const buf = await fetchImageBuffer(imageUrl);
+        if (buf) photoPayload = buf;
+      }
+
+      const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
+
+      try {
+        let result;
+        if (photoPayload) {
+          result = await bot.sendPhoto(
+            config.telegramChatId,
+            photoPayload,
+            { caption: text, ...opts },
+            Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
+          );
+        } else {
+          result = await bot.sendMessage(config.telegramChatId, text, {
+            disable_web_page_preview: true,
+            ...opts,
+          });
+        }
+        const messageId = result && result.message_id;
+        if (messageId) {
+          state.titleMessages[key] = {
+            messageId,
+            chatId: config.telegramChatId,
+            date: today,
+            hasPhoto: !!photoPayload,
+            isNewTitle: true,
+            chapters: [],
+          };
+        }
+        console.log(`Posted (new title): ${titleName}`);
+      } catch (e) {
+        console.error('Telegram send error (new title):', e.message);
+      }
+    }
+  } catch (e) {
+    console.error('Fetch titles error:', e.message);
+  }
+
+  // ======== Обработка новых глав ========
   const chapters = await fetchLatestChapters();
   const toPost = [];
   let maxSeen = lastProcessed;
@@ -258,10 +367,6 @@ async function run() {
     if (!byTitle.has(key)) byTitle.set(key, []);
     byTitle.get(key).push(item);
   }
-
-  const debug = process.env.DEBUG === '1' || process.env.DEBUG === 'true';
-  const today = getTodayString();
-  if (!state.titleMessages) state.titleMessages = {};
 
   for (const [, items] of byTitle) {
     const first = items[0];
@@ -510,8 +615,11 @@ async function run() {
 
   const lastProcessedStr =
     maxSeen > 0 ? new Date(maxSeen).toISOString() : initialLastProcessedStr;
+  const lastProcessedTitleStr =
+    maxSeenTitle > 0 ? new Date(maxSeenTitle).toISOString() : initialLastProcessedTitleStr;
   saveState(config.statePath, {
     lastProcessedReleaseDate: lastProcessedStr || undefined,
+    lastProcessedTitleCreatedAt: lastProcessedTitleStr || undefined,
     titleMessages: prunedTitleMessages,
   });
 }
