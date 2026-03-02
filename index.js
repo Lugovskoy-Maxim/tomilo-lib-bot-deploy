@@ -270,6 +270,7 @@ async function run() {
       const createdTime = title.createdAt ? new Date(title.createdAt).getTime() : 0;
       if (createdTime > 0) maxSeenTitle = Math.max(maxSeenTitle || 0, createdTime);
       if (lastProcessedTitle != null && createdTime <= lastProcessedTitle) continue;
+      if (!isTitleCreatedToday(title.createdAt)) continue;
       newTitles.push(title);
     }
 
