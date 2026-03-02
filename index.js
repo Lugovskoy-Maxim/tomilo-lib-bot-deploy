@@ -266,15 +266,27 @@ async function run() {
     const titles = await fetchLatestTitles();
     const newTitles = [];
 
+    if (debug) {
+      console.log(`Fetched ${titles.length} titles, lastProcessedTitle: ${lastProcessedTitle ? new Date(lastProcessedTitle).toISOString() : 'null'}`);
+    }
+
     for (const title of titles) {
       const createdTime = title.createdAt ? new Date(title.createdAt).getTime() : 0;
       if (createdTime > 0) maxSeenTitle = Math.max(maxSeenTitle || 0, createdTime);
       if (lastProcessedTitle != null && createdTime <= lastProcessedTitle) continue;
-      if (!isTitleCreatedToday(title.createdAt)) continue;
+      if (!isTitleCreatedToday(title.createdAt)) {
+        if (debug) console.log(`Skipping "${title.name}" - not created today (${title.createdAt})`);
+        continue;
+      }
+      if (debug) console.log(`New title candidate: "${title.name}" created at ${title.createdAt}`);
       newTitles.push(title);
     }
 
     newTitles.reverse();
+
+    if (newTitles.length > 0) {
+      console.log(`Found ${newTitles.length} new title(s) to notify`);
+    }
 
     for (const title of newTitles) {
       const titleName = title.name || 'Без названия';
@@ -626,7 +638,7 @@ async function run() {
 }
 
 async function loop() {
-  console.log('Checking for new chapters...');
+  console.log('Checking for new titles and chapters...');
   try {
     await run();
   } catch (e) {
