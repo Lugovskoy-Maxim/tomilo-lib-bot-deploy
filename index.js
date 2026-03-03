@@ -305,6 +305,55 @@ async function fetchTitleBySlug(slug) {
   }
 }
 
+/** Лидерборд: топ тайтлов по рейтингу или просмотрам. Возвращает [{ slug, name, position, value }]. */
+async function fetchLeaderboard(sortBy, limit) {
+  const url = `${config.apiUrl}/titles?page=1&limit=${limit}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=desc`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API leaderboard ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  if (!json.success || !json.data || !Array.isArray(json.data.titles)) return [];
+  const list = [];
+  const valueKey = sortBy === 'views' ? 'viewsCount' : 'rating';
+  json.data.titles.forEach((t, i) => {
+    const slug = t.slug || '';
+    const name = t.name || 'Без названия';
+    const value = t[valueKey] != null ? Number(t[valueKey]) : 0;
+    list.push({ slug, name, position: i + 1, value });
+  });
+  return list;
+}
+
+/** Сообщение об изменениях в таблице лидеров (кто поднялся/опустился). */
+function formatLeaderboardChangesMessage(changes, sortLabel) {
+  const lines = ['<b>📊 Изменения в рейтинге</b>', ''];
+  for (const c of changes) {
+    const name = escapeHtml(c.name);
+    if (c.prevPosition != null && c.newPosition != null) {
+      if (c.newPosition < c.prevPosition) {
+        lines.push(`🟢 ${name}: с ${c.prevPosition} на ${c.newPosition} место`);
+      } else {
+        lines.push(`🔴 ${name}: с ${c.prevPosition} на ${c.newPosition} место`);
+      }
+    } else if (c.prevPosition == null) {
+      lines.push(`🆕 ${name}: ${c.newPosition} место (новый в топе)`);
+    }
+  }
+  if (sortLabel) lines.push('', `<i>${escapeHtml(sortLabel)}</i>`);
+  return lines.join('\n');
+}
+
+/** Сообщение о юбилейной главе (50, 100, 200...). */
+function formatMilestoneChapterMessage(titleName, chapterNum, titleSlug) {
+  const name = escapeHtml(titleName || 'Без названия');
+  return [
+    '<b>🎉 Юбилейная глава!</b>',
+    '',
+    `Тайтл <b>${name}</b> достиг ${chapterNum} глав.`,
+    '',
+    'Поздравляем автора и читателей 👏',
+  ].join('\n');
+}
+
 async function run() {
   const state = loadState(config.statePath);
   let lastProcessed = state.lastProcessedReleaseDate
@@ -332,6 +381,7 @@ async function run() {
   // ======== Обработка новых тайтлов (независимо от глав) ========
   let maxSeenTitle = lastProcessedTitle;
   let maxNotifiedTitle = lastProcessedTitle;
+  if (config.notifyNewTitles) {
   try {
     const titles = await fetchLatestTitles();
     const newTitles = [];
@@ -420,6 +470,7 @@ async function run() {
   } catch (e) {
     console.error('Fetch titles error:', e.message);
   }
+  }
 
   // ======== Обработка новых глав ========
   const chapters = await fetchLatestChapters();
@@ -485,6 +536,25 @@ async function run() {
       description: t?.description,
       shortDescription: t?.shortDescription,
     };
+
+    // Юбилейные главы (50, 100, 200…): оповещение один раз на порог
+    if (config.notifyMilestoneChapters && config.milestoneChapters.length > 0) {
+      const key = titleSlug || titleName;
+      const notified = state.notifiedMilestones[key] || [];
+      for (const ch of newChapters) {
+        const num = ch.chapterNumber;
+        if (config.milestoneChapters.includes(num) && !notified.includes(num)) {
+          const text = formatMilestoneChapterMessage(titleName, num, titleSlug);
+          try {
+            await sendMessageSafe(text, { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) });
+            state.notifiedMilestones[key] = [...(state.notifiedMilestones[key] || []), num];
+            console.log(`Posted (milestone): ${titleName} — ${num} глав`);
+          } catch (e) {
+            console.error('Milestone send error:', e.message);
+          }
+        }
+      }
+    }
 
     const isNewTitleToday = isTitleCreatedToday(t?.createdAt);
     if (isNewTitleToday) {
@@ -572,6 +642,7 @@ async function run() {
       continue;
     }
 
+    if (config.notifyNewChapters) {
     const text = formatChapterMessage(chaptersToShow, titleName, titleInfo);
     const imageUrl = getImageUrl(titleForCover);
     if (DEBUG) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
@@ -666,6 +737,79 @@ async function run() {
         console.error('Telegram send error:', e.message);
       }
     }
+    } else {
+      if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+    }
+  }
+
+  // ======== Таблица лидеров: изменения позиций в рейтинге ========
+  if (config.notifyLeaderboard && config.leaderboardSize > 0) {
+    try {
+      const newList = await fetchLeaderboard(config.leaderboardSort, config.leaderboardSize);
+      const oldBySlug = new Map((state.lastLeaderboard || []).map((e) => [e.slug, e]));
+      const changes = [];
+      for (let i = 0; i < newList.length; i++) {
+        const curr = newList[i];
+        const prev = oldBySlug.get(curr.slug);
+        if (prev && prev.position !== curr.position) {
+          changes.push({
+            name: curr.name,
+            prevPosition: prev.position,
+            newPosition: curr.position,
+          });
+        } else if (!prev && curr.position <= config.leaderboardSize) {
+          changes.push({ name: curr.name, prevPosition: null, newPosition: curr.position });
+        }
+      }
+      if (changes.length > 0) {
+        const sortLabel = config.leaderboardSort === 'views' ? 'По просмотрам' : 'По рейтингу';
+        const text = formatLeaderboardChangesMessage(changes, sortLabel);
+        await sendMessageSafe(text, { parse_mode: 'HTML' });
+        console.log(`Posted (leaderboard): ${changes.length} изменений`);
+      }
+      state.lastLeaderboard = newList;
+    } catch (e) {
+      console.error('Leaderboard error:', e.message);
+    }
+  }
+
+  // ======== Тайтл набрал за день N+ просмотров (требует views в API) ========
+  if (config.notifyDailyViews) {
+    try {
+      const titlesWithViews = await fetchLeaderboard('views', 200);
+      const todayViews = {};
+      for (const t of titlesWithViews) {
+        if (t.slug && t.value != null) todayViews[t.slug] = t.value;
+      }
+      const prevDate = state.lastViewsDate;
+      const prevBySlug = state.lastViewsBySlug || {};
+      const isNewDay = prevDate !== today;
+      if (isNewDay && Object.keys(prevBySlug).length > 0) {
+        for (const [slug, viewsNow] of Object.entries(todayViews)) {
+          const viewsPrev = prevBySlug[slug] != null ? Number(prevBySlug[slug]) : 0;
+          const delta = Math.max(0, viewsNow - viewsPrev);
+          if (delta >= config.dailyViewsMin) {
+            const name = titlesWithViews.find((x) => x.slug === slug)?.name || slug;
+            const text = [
+              '<b>🔥 Рекорд просмотров за день</b>',
+              '',
+              `Тайтл <b>${escapeHtml(name)}</b> набрал <b>${delta.toLocaleString('ru-RU')}</b> просмотров за сутки.`,
+              '',
+              `Минимум для оповещения: ${config.dailyViewsMin.toLocaleString('ru-RU')}`,
+            ].join('\n');
+            await sendMessageSafe(text, {
+              parse_mode: 'HTML',
+              ...siteButton(config.siteUrl, slug),
+            });
+            console.log(`Posted (daily views): ${name} +${delta}`);
+          }
+        }
+      }
+      state.lastViewsDate = today;
+      state.lastViewsBySlug = todayViews;
+    } catch (e) {
+      console.error('Daily views check error:', e.message);
+    }
   }
 
   // Оставляем в state только сообщения за сегодня, чтобы не раздувать файл
@@ -679,6 +823,7 @@ async function run() {
   const lastProcessedTitleStr =
     maxNotifiedTitle > 0 ? new Date(maxNotifiedTitle).toISOString() : initialLastProcessedTitleStr;
   saveState(config.statePath, {
+    ...state,
     lastProcessedReleaseDate: lastProcessedStr || undefined,
     lastProcessedTitleCreatedAt: lastProcessedTitleStr || undefined,
     titleMessages: prunedTitleMessages,
