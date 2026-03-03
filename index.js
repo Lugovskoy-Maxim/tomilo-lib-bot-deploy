@@ -75,6 +75,7 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
 }
 
 function formatChaptersLine(chapters) {
+  if (!Array.isArray(chapters) || chapters.length === 0) return 'Главы —';
   const nums = chapters.map((ch) => ch.chapterNumber).sort((a, b) => a - b);
   const latest = chapters.reduce((acc, ch) => {
     const t = ch.releaseDate ? new Date(ch.releaseDate).getTime() : 0;
@@ -268,7 +269,7 @@ async function fetchImageBuffer(url, timeoutMs = 15000) {
 }
 
 async function fetchLatestChapters() {
-  const url = `${config.apiUrl}/chapters?page=1&limit=20&sortBy=releaseDate&sortOrder=desc`;
+  const url = `${config.apiUrl}/chapters?page=1&limit=100&sortBy=releaseDate&sortOrder=desc`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
   const json = await res.json();
@@ -279,7 +280,7 @@ async function fetchLatestChapters() {
 }
 
 async function fetchLatestTitles() {
-  const url = `${config.apiUrl}/titles?page=1&limit=20&sortBy=createdAt&sortOrder=desc`;
+  const url = `${config.apiUrl}/titles?page=1&limit=100&sortBy=createdAt&sortOrder=desc`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`API titles ${res.status}: ${await res.text()}`);
   const json = await res.json();
