@@ -394,7 +394,9 @@ async function run() {
       const createdTime = title.createdAt ? new Date(title.createdAt).getTime() : 0;
       if (createdTime > 0) maxSeenTitle = Math.max(maxSeenTitle || 0, createdTime);
       if (lastProcessedTitle != null && createdTime <= lastProcessedTitle) continue;
-      if (!isTitleCreatedToday(title.createdAt)) {
+      // При первом запуске (lastProcessedTitle === null) оповещаем только тайтлы "созданы сегодня" (UTC), чтобы не слать старые.
+      // При последующих — любой тайтл новее lastProcessedTitle считаем новым (часовой пояс/формат API не мешают).
+      if (lastProcessedTitle == null && !isTitleCreatedToday(title.createdAt)) {
         if (DEBUG) console.log(`Skipping "${title.name}" - not created today (${title.createdAt})`);
         continue;
       }
