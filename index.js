@@ -128,7 +128,10 @@ function translateType(type) {
   return TYPE_LABELS[key] || escapeHtml(type);
 }
 
-function formatChapterMessage(chapters, titleName, titleInfo = {}) {
+/**
+ * @param {object} opts - { milestoneNumbers?: number[] } — юбилейные номера глав для строки "🎉 Юбилейная глава!"
+ */
+function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const title = titleName || 'Без названия';
   const isPlural = (Array.isArray(chapters) ? chapters.length : 1) > 1;
   const header = isPlural ? '<b>✨ НОВЫЕ ГЛАВЫ ✨</b>' : '<b>✨ НОВАЯ ГЛАВА ✨</b>';
@@ -151,11 +154,17 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}) {
   const totalCh = titleInfo.totalChapters != null && Number(titleInfo.totalChapters) > 0 ? Number(titleInfo.totalChapters) : 0;
   const totalLine = totalCh ? `<i>Всего глав: ${totalCh}</i>` : '';
 
+  const milestoneNumbers = opts.milestoneNumbers && Array.isArray(opts.milestoneNumbers) ? opts.milestoneNumbers : [];
+  const milestoneLine = milestoneNumbers.length > 0
+    ? `🎉 Юбилейная глава! Достигли ${milestoneNumbers.join(', ')} глав.`
+    : '';
+
   const lines = [
     header,
     '',
     titleLine,
     chapterLine,
+    ...(milestoneLine ? [milestoneLine] : []),
     '─────────────────',
     ...(metaLine ? [metaLine] : []),
     ...(genreStr ? [genreStr] : []),
@@ -340,18 +349,6 @@ function formatLeaderboardChangesMessage(changes, sortLabel) {
   }
   if (sortLabel) lines.push('', `<i>${escapeHtml(sortLabel)}</i>`);
   return lines.join('\n');
-}
-
-/** Сообщение о юбилейной главе (50, 100, 200...). */
-function formatMilestoneChapterMessage(titleName, chapterNum, titleSlug) {
-  const name = escapeHtml(titleName || 'Без названия');
-  return [
-    '<b>🎉 Юбилейная глава!</b>',
-    '',
-    `Тайтл <b>${name}</b> достиг ${chapterNum} глав.`,
-    '',
-    'Поздравляем автора и читателей 👏',
-  ].join('\n');
 }
 
 async function run() {
@@ -539,25 +536,6 @@ async function run() {
       shortDescription: t?.shortDescription,
     };
 
-    // Юбилейные главы (50, 100, 200…): оповещение один раз на порог
-    if (config.notifyMilestoneChapters && config.milestoneChapters.length > 0) {
-      const key = titleSlug || titleName;
-      const notified = state.notifiedMilestones[key] || [];
-      for (const ch of newChapters) {
-        const num = ch.chapterNumber;
-        if (config.milestoneChapters.includes(num) && !notified.includes(num)) {
-          const text = formatMilestoneChapterMessage(titleName, num, titleSlug);
-          try {
-            await sendMessageSafe(text, { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) });
-            state.notifiedMilestones[key] = [...(state.notifiedMilestones[key] || []), num];
-            console.log(`Posted (milestone): ${titleName} — ${num} глав`);
-          } catch (e) {
-            console.error('Milestone send error:', e.message);
-          }
-        }
-      }
-    }
-
     const isNewTitleToday = isTitleCreatedToday(t?.createdAt);
     if (isNewTitleToday) {
       const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
@@ -645,7 +623,15 @@ async function run() {
     }
 
     if (config.notifyNewChapters) {
-    const text = formatChapterMessage(chaptersToShow, titleName, titleInfo);
+    const keyCh = titleSlug || titleName;
+    let milestoneNumbers = [];
+    if (config.notifyMilestoneChapters && config.milestoneChapters.length > 0) {
+      const notified = state.notifiedMilestones[keyCh] || [];
+      milestoneNumbers = chaptersToShow
+        .map((c) => c.chapterNumber)
+        .filter((num) => config.milestoneChapters.includes(num) && !notified.includes(num));
+    }
+    const text = formatChapterMessage(chaptersToShow, titleName, titleInfo, { milestoneNumbers });
     const imageUrl = getImageUrl(titleForCover);
     if (DEBUG) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
     let photoPayload = imageUrl;
@@ -684,6 +670,9 @@ async function run() {
           hasPhoto: existing.hasPhoto,
           chapters: chaptersToShow,
         };
+        if (milestoneNumbers.length > 0) {
+          state.notifiedMilestones[keyCh] = [...(state.notifiedMilestones[keyCh] || []), ...milestoneNumbers];
+        }
         if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
         const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
         console.log(`Updated: ${titleName} ch.${chNums}`);
@@ -711,6 +700,9 @@ async function run() {
           hasPhoto: !!photoPayload,
           chapters: chaptersToShow,
         };
+        if (milestoneNumbers.length > 0) {
+          state.notifiedMilestones[keyCh] = [...(state.notifiedMilestones[keyCh] || []), ...milestoneNumbers];
+        }
       }
       if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
       const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
@@ -729,6 +721,9 @@ async function run() {
               hasPhoto: false,
               chapters: chaptersToShow,
             };
+            if (milestoneNumbers.length > 0) {
+              state.notifiedMilestones[keyCh] = [...(state.notifiedMilestones[keyCh] || []), ...milestoneNumbers];
+            }
           }
           if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
           console.log(`Posted (no photo): ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(', ')}`);
