@@ -7,7 +7,6 @@ function loadState(statePath) {
     const data = JSON.parse(raw);
     return {
       lastProcessedReleaseDate: data.lastProcessedReleaseDate ? new Date(data.lastProcessedReleaseDate) : null,
-      lastProcessedTitleCreatedAt: data.lastProcessedTitleCreatedAt ? new Date(data.lastProcessedTitleCreatedAt) : null,
       titleMessages: data.titleMessages && typeof data.titleMessages === 'object' ? data.titleMessages : {},
       // Таблица лидеров: [{ slug, name, position, value }] для сравнения позиций
       lastLeaderboard: Array.isArray(data.lastLeaderboard) ? data.lastLeaderboard : [],
@@ -21,7 +20,6 @@ function loadState(statePath) {
     if (e.code !== 'ENOENT') console.error('State load error:', e.message);
     return {
       lastProcessedReleaseDate: null,
-      lastProcessedTitleCreatedAt: null,
       titleMessages: {},
       lastLeaderboard: [],
       notifiedMilestones: {},
@@ -42,7 +40,6 @@ function saveState(statePath, state) {
   }
   const toSave = {
     lastProcessedReleaseDate: state.lastProcessedReleaseDate,
-    lastProcessedTitleCreatedAt: state.lastProcessedTitleCreatedAt,
     titleMessages: state.titleMessages,
     lastLeaderboard: state.lastLeaderboard,
     notifiedMilestones: state.notifiedMilestones,

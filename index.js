@@ -288,17 +288,6 @@ async function fetchLatestChapters() {
   return json.data.chapters;
 }
 
-async function fetchLatestTitles() {
-  const url = `${config.apiUrl}/titles?page=1&limit=100&sortBy=createdAt&sortOrder=desc`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`API titles ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  if (!json.success || !json.data || !Array.isArray(json.data.titles)) {
-    throw new Error('Invalid API response for titles');
-  }
-  return json.data.titles;
-}
-
 /** Подгружаем тайтл по slug — в списке глав не всегда есть coverImage. */
 async function fetchTitleBySlug(slug) {
   if (!slug) return null;
@@ -356,120 +345,17 @@ async function run() {
   let lastProcessed = state.lastProcessedReleaseDate
     ? new Date(state.lastProcessedReleaseDate).getTime()
     : null;
-  let lastProcessedTitle = state.lastProcessedTitleCreatedAt
-    ? new Date(state.lastProcessedTitleCreatedAt).getTime()
-    : null;
   const initialLastProcessedStr =
     state.lastProcessedReleaseDate && typeof state.lastProcessedReleaseDate.toISOString === 'function'
       ? state.lastProcessedReleaseDate.toISOString()
       : state.lastProcessedReleaseDate
         ? String(state.lastProcessedReleaseDate)
         : null;
-  const initialLastProcessedTitleStr =
-    state.lastProcessedTitleCreatedAt && typeof state.lastProcessedTitleCreatedAt.toISOString === 'function'
-      ? state.lastProcessedTitleCreatedAt.toISOString()
-      : state.lastProcessedTitleCreatedAt
-        ? String(state.lastProcessedTitleCreatedAt)
-        : null;
 
   const today = getTodayString();
   if (!state.titleMessages) state.titleMessages = {};
 
-  // ======== Обработка новых тайтлов (независимо от глав) ========
-  let maxSeenTitle = lastProcessedTitle;
-  let maxNotifiedTitle = lastProcessedTitle;
-  if (config.notifyNewTitles) {
-  try {
-    const titles = await fetchLatestTitles();
-    const newTitles = [];
-
-    if (DEBUG) {
-      console.log(`Fetched ${titles.length} titles, lastProcessedTitle: ${lastProcessedTitle ? new Date(lastProcessedTitle).toISOString() : 'null'}`);
-    }
-
-    for (const title of titles) {
-      const createdTime = title.createdAt ? new Date(title.createdAt).getTime() : 0;
-      if (createdTime > 0) maxSeenTitle = Math.max(maxSeenTitle || 0, createdTime);
-      if (lastProcessedTitle != null && createdTime <= lastProcessedTitle) continue;
-      // При первом запуске (lastProcessedTitle === null) оповещаем только тайтлы "созданы сегодня" (UTC), чтобы не слать старые.
-      // При последующих — любой тайтл новее lastProcessedTitle считаем новым (часовой пояс/формат API не мешают).
-      if (lastProcessedTitle == null && !isTitleCreatedToday(title.createdAt)) {
-        if (DEBUG) console.log(`Skipping "${title.name}" - not created today (${title.createdAt})`);
-        continue;
-      }
-      if (DEBUG) console.log(`New title candidate: "${title.name}" created at ${title.createdAt}`);
-      newTitles.push(title);
-    }
-
-    newTitles.reverse();
-
-    if (newTitles.length > 0) {
-      console.log(`Found ${newTitles.length} new title(s) to notify`);
-    }
-
-    for (const title of newTitles) {
-      const titleName = title.name || 'Без названия';
-      const titleSlug = title.slug || '';
-      const key = titleSlug || titleName;
-      const createdTime = title.createdAt ? new Date(title.createdAt).getTime() : 0;
-
-      const existing = state.titleMessages[key];
-      if (existing && existing.date === today && existing.messageId) {
-        if (DEBUG) console.log(`Skipping already notified title: ${titleName}`);
-        continue;
-      }
-
-      const titleInfo = {
-        ageLimit: title.ageLimit,
-        releaseYear: title.releaseYear,
-        type: title.type,
-        status: title.status,
-        genres: title.genres,
-        author: title.author,
-        artist: title.artist,
-        totalChapters: title.totalChapters || 0,
-        description: title.description,
-        shortDescription: title.shortDescription,
-      };
-
-      const text = formatNewTitleMessage(titleName, titleInfo);
-      const imageUrl = getImageUrl(title);
-      let photoPayload = imageUrl;
-      if (imageUrl) {
-        const buf = await fetchImageBuffer(imageUrl);
-        if (buf) photoPayload = buf;
-      }
-
-      const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
-
-      try {
-        const result = await sendPhotoOrMessage({
-          photoPayload,
-          text,
-          opts,
-          fileOpts: Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
-        });
-        const messageId = result && result.message_id;
-        if (messageId) {
-          state.titleMessages[key] = {
-            messageId,
-            chatId: config.telegramChatId,
-            date: today,
-            hasPhoto: !!photoPayload,
-            isNewTitle: true,
-            chapters: [],
-          };
-        }
-        if (createdTime > 0) maxNotifiedTitle = Math.max(maxNotifiedTitle || 0, createdTime);
-        console.log(`Posted (new title): ${titleName}`);
-      } catch (e) {
-        console.error('Telegram send error (new title):', e.message);
-      }
-    }
-  } catch (e) {
-    console.error('Fetch titles error:', e.message);
-  }
-  }
+  // Новый тайтл = главы добавляются к тайтлу, созданному сегодня (проверяется в цикле по главам через isTitleCreatedToday).
 
   // ======== Обработка новых глав ========
   const chapters = await fetchLatestChapters();
@@ -536,8 +422,9 @@ async function run() {
       shortDescription: t?.shortDescription,
     };
 
+    // Новый тайтл = главы добавляются к тайтлу, созданному сегодня (UTC)
     const isNewTitleToday = isTitleCreatedToday(t?.createdAt);
-    if (isNewTitleToday) {
+    if (isNewTitleToday && config.notifyNewTitles) {
       const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
       const isEditNewTitle = existing && existing.date === today && existing.messageId && existing.isNewTitle;
 
@@ -547,8 +434,15 @@ async function run() {
           : newChapters;
         const updatedTitle = await fetchTitleBySlug(titleSlug);
         const updatedT = updatedTitle || t;
+        // Все данные для сообщения берём из свежего ответа API, чтобы количество глав и остальное было актуальным
         const updatedInfo = {
-          ...titleInfo,
+          ageLimit: updatedT?.ageLimit ?? titleInfo.ageLimit,
+          releaseYear: updatedT?.releaseYear ?? titleInfo.releaseYear,
+          type: updatedT?.type ?? titleInfo.type,
+          status: updatedT?.status ?? titleInfo.status,
+          genres: updatedT?.genres ?? titleInfo.genres,
+          author: updatedT?.author ?? titleInfo.author,
+          artist: updatedT?.artist ?? titleInfo.artist,
           totalChapters: updatedT?.totalChapters != null ? updatedT.totalChapters : (mergedChapters.length || titleInfo.totalChapters),
           description: updatedT?.description ?? titleInfo.description,
           shortDescription: updatedT?.shortDescription ?? titleInfo.shortDescription,
@@ -817,12 +711,9 @@ async function run() {
 
   const lastProcessedStr =
     maxNotified > 0 ? new Date(maxNotified).toISOString() : initialLastProcessedStr;
-  const lastProcessedTitleStr =
-    maxNotifiedTitle > 0 ? new Date(maxNotifiedTitle).toISOString() : initialLastProcessedTitleStr;
   saveState(config.statePath, {
     ...state,
     lastProcessedReleaseDate: lastProcessedStr || undefined,
-    lastProcessedTitleCreatedAt: lastProcessedTitleStr || undefined,
     titleMessages: prunedTitleMessages,
   });
 }

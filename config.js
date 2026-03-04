@@ -34,7 +34,7 @@ module.exports = {
   // --- Оповещения (вкл/выкл в конфиге) ---
   /** Оповещения о новых главах */
   notifyNewChapters: parseBool(process.env.NOTIFY_NEW_CHAPTERS, true),
-  /** Оповещения о новых тайтлах (добавленных сегодня) */
+  /** Оповещения «Новый тайтл на сайте» — когда к тайтлу, созданному сегодня, добавляются главы */
   notifyNewTitles: parseBool(process.env.NOTIFY_NEW_TITLES, true),
   /** Таблица лидеров: уведомлять об изменении позиций в рейтинге (sortBy: rating или views) */
   notifyLeaderboard: parseBool(process.env.NOTIFY_LEADERBOARD, false),
