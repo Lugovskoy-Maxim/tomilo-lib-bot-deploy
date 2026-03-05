@@ -286,7 +286,7 @@ function getImageUrl(title) {
 /**
  * Возвращает массив URL обложки для проверки: с сервера и/или из облака.
  * Если coverImage — полный URL (http/https), возвращается только он.
- * Если coverImage — путь, собираются URL от imageBaseUrl и при наличии imageCloudBaseUrl — от облака.
+ * В облаке нет папки uploads: при сборке облачного URL префикс uploads/ или /uploads/ убирается.
  */
 function getImageUrls(title) {
   const raw = title && title.coverImage;
@@ -298,7 +298,10 @@ function getImageUrls(title) {
   const serverUrl = path.startsWith('/') ? serverBase + path : serverBase + '/' + path;
   const urls = [serverUrl];
   if (config.imageCloudBaseUrl) {
-    const cloudUrl = path.startsWith('/') ? config.imageCloudBaseUrl + path : config.imageCloudBaseUrl + '/' + path;
+    let cloudPath = path.startsWith('/') ? path : '/' + path;
+    if (cloudPath.startsWith('/uploads/')) cloudPath = cloudPath.slice('/uploads'.length);
+    else if (cloudPath.startsWith('uploads/')) cloudPath = '/' + cloudPath.slice('uploads'.length);
+    const cloudUrl = cloudPath.startsWith('/') ? config.imageCloudBaseUrl + cloudPath : config.imageCloudBaseUrl + '/' + cloudPath;
     urls.push(cloudUrl);
   }
   return urls;
