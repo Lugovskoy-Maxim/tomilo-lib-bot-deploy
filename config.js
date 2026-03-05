@@ -26,8 +26,10 @@ module.exports = {
   telegramChatId: String(required('TELEGRAM_CHAT_ID')).trim(),
   apiUrl: (process.env.API_URL || 'http://localhost:3001/api').replace(/\/$/, ''),
   siteUrl: (process.env.SITE_URL || 'https://tomilo-lib.ru').replace(/\/$/, ''),
-  /** Базовый URL для картинок (обложки, страницы). По умолчанию = siteUrl. Если картинки отдаёт только API-сервер — задай IMAGE_BASE_URL. */
+  /** Базовый URL для картинок с сервера. По умолчанию = siteUrl. */
   imageBaseUrl: (process.env.IMAGE_BASE_URL || process.env.SITE_URL || 'https://tomilo-lib.ru').replace(/\/$/, ''),
+  /** Базовый URL для картинок из облака (например S3). Если задан, при относительном coverImage пробуем оба варианта. */
+  imageCloudBaseUrl: process.env.IMAGE_CLOUD_BASE_URL ? String(process.env.IMAGE_CLOUD_BASE_URL).replace(/\/$/, '') : null,
   pollIntervalMs: Math.max(60_000, parseInt(process.env.POLL_INTERVAL_MS || '300000', 10)),
   statePath: process.env.STATE_PATH || '.bot-state.json',
 

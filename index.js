@@ -274,17 +274,37 @@ function mergeChapters(existing, newChapters) {
   return [...byNum.values()].sort((a, b) => (a.chapterNumber || 0) - (b.chapterNumber || 0));
 }
 
+/**
+ * Возвращает один URL обложки (для обратной совместимости и логов).
+ * Предпочтение: сервер (imageBaseUrl), если передан только один вариант.
+ */
 function getImageUrl(title) {
-  const raw = title && title.coverImage;
-  if (!raw || typeof raw !== 'string') return null;
-  const path = raw.trim();
-  if (!path) return null;
-  if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  const base = config.imageBaseUrl.replace(/\/$/, '');
-  return path.startsWith('/') ? base + path : base + '/' + path;
+  const urls = getImageUrls(title);
+  return urls.length > 0 ? urls[0] : null;
 }
 
-/** Скачиваем картинку сами и отдаём буфер — так Telegram не таймаутит по чужому URL. */
+/**
+ * Возвращает массив URL обложки для проверки: с сервера и/или из облака.
+ * Если coverImage — полный URL (http/https), возвращается только он.
+ * Если coverImage — путь, собираются URL от imageBaseUrl и при наличии imageCloudBaseUrl — от облака.
+ */
+function getImageUrls(title) {
+  const raw = title && title.coverImage;
+  if (!raw || typeof raw !== 'string') return [];
+  const path = raw.trim();
+  if (!path) return [];
+  if (path.startsWith('http://') || path.startsWith('https://')) return [path];
+  const serverBase = config.imageBaseUrl.replace(/\/$/, '');
+  const serverUrl = path.startsWith('/') ? serverBase + path : serverBase + '/' + path;
+  const urls = [serverUrl];
+  if (config.imageCloudBaseUrl) {
+    const cloudUrl = path.startsWith('/') ? config.imageCloudBaseUrl + path : config.imageCloudBaseUrl + '/' + path;
+    urls.push(cloudUrl);
+  }
+  return urls;
+}
+
+/** Скачиваем картинку по одному URL, возвращаем буфер или null. */
 async function fetchImageBuffer(url, timeoutMs = 15000) {
   try {
     const controller = new AbortController();
@@ -300,6 +320,16 @@ async function fetchImageBuffer(url, timeoutMs = 15000) {
   } catch {
     return null;
   }
+}
+
+/** Пробует скачать картинку по списку URL (сервер, облако); возвращает буфер первого успешного. */
+async function fetchImageBufferFromUrls(urls, timeoutMs = 15000) {
+  if (!Array.isArray(urls) || urls.length === 0) return null;
+  for (const url of urls) {
+    const buf = await fetchImageBuffer(url, timeoutMs);
+    if (buf) return buf;
+  }
+  return null;
 }
 
 async function fetchLatestChapters() {
@@ -482,15 +512,16 @@ async function run() {
       milestoneNumbers,
       isNewTitleOnSite,
     });
+    const imageUrls = getImageUrls(titleForCover);
     const imageUrl = getImageUrl(titleForCover);
     if (DEBUG) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
     let photoPayload = imageUrl;
-    if (imageUrl) {
-      const buf = await fetchImageBuffer(imageUrl);
+    if (imageUrls.length > 0) {
+      const buf = await fetchImageBufferFromUrls(imageUrls);
       if (buf) photoPayload = buf;
       else {
-        if (DEBUG) console.log('Image fetch failed, will try URL');
-        else console.log('Cover fetch failed (check IMAGE_BASE_URL / cover URL):', imageUrl.slice(0, 60) + '…');
+        if (DEBUG) console.log('Image fetch failed for all URLs');
+        else console.log('Cover fetch failed (check IMAGE_BASE_URL / IMAGE_CLOUD_BASE_URL):', imageUrls[0].slice(0, 60) + '…');
       }
     } else {
       console.log('No cover for this title (set cover in admin for the title)');
