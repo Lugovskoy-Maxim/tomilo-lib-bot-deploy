@@ -296,7 +296,7 @@ function getImageUrls(title) {
   if (path.startsWith('http://') || path.startsWith('https://')) return [path];
   const serverBase = config.imageBaseUrl.replace(/\/$/, '');
   const serverUrl = path.startsWith('/') ? serverBase + path : serverBase + '/' + path;
-  const urls = [serverUrl];
+  const urls = [];
   if (config.imageCloudBaseUrl) {
     let cloudPath = path.startsWith('/') ? path : '/' + path;
     if (cloudPath.startsWith('/uploads/')) cloudPath = cloudPath.slice('/uploads'.length);
@@ -304,6 +304,7 @@ function getImageUrls(title) {
     const cloudUrl = cloudPath.startsWith('/') ? config.imageCloudBaseUrl + cloudPath : config.imageCloudBaseUrl + '/' + cloudPath;
     urls.push(cloudUrl);
   }
+  urls.push(serverUrl);
   return urls;
 }
 
@@ -314,13 +315,21 @@ async function fetchImageBuffer(url, timeoutMs = 15000) {
     const to = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'TomiloLibBot/1.0' },
+      redirect: 'follow',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; TomiloLibBot/1.0; +https://tomilo-lib.ru)',
+        Accept: 'image/*',
+      },
     });
     clearTimeout(to);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (DEBUG) console.log('Image fetch failed:', res.status, url.slice(0, 70) + '…');
+      return null;
+    }
     const buf = await res.arrayBuffer();
     return Buffer.from(buf);
-  } catch {
+  } catch (e) {
+    if (DEBUG) console.log('Image fetch error:', e && e.message, url.slice(0, 70) + '…');
     return null;
   }
 }
