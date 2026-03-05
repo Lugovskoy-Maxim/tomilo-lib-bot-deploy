@@ -548,14 +548,57 @@ async function run() {
             message_id: existing.messageId,
             ...opts,
           });
-        } else {
-          await bot.editMessageText(text, {
-            chat_id: config.telegramChatId,
-            message_id: existing.messageId,
-            disable_web_page_preview: true,
-            ...opts,
-          });
+          state.titleMessages[key] = {
+            messageId: existing.messageId,
+            chatId: config.telegramChatId,
+            date: today,
+            hasPhoto: true,
+            chapters: chaptersToShow,
+          };
+          if (milestoneNumbers.length > 0) {
+            state.notifiedMilestones[keyCh] = [...(state.notifiedMilestones[keyCh] || []), ...milestoneNumbers];
+          }
+          if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+          const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
+          console.log(`Updated: ${titleName} ch.${chNums}`);
+          continue;
         }
+        if (!existing.hasPhoto && photoPayload) {
+          // Восстанавливаем сообщение с картинкой: отправляем новое с обложкой и удаляем старое
+          const result = await sendPhotoOrMessage({
+            photoPayload,
+            text,
+            opts,
+            fileOpts: { filename: 'cover.jpg', contentType: 'image/jpeg' },
+          });
+          if (result && result.message_id) {
+            try {
+              await bot.deleteMessage(config.telegramChatId, existing.messageId);
+            } catch (delErr) {
+              if (DEBUG) console.log('Could not delete old message:', delErr && delErr.message);
+            }
+            state.titleMessages[key] = {
+              messageId: result.message_id,
+              chatId: config.telegramChatId,
+              date: today,
+              hasPhoto: true,
+              chapters: chaptersToShow,
+            };
+            if (milestoneNumbers.length > 0) {
+              state.notifiedMilestones[keyCh] = [...(state.notifiedMilestones[keyCh] || []), ...milestoneNumbers];
+            }
+            if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+            const chNums = chaptersToShow.map((c) => c.chapterNumber).join(', ');
+            console.log(`Updated (restored with cover): ${titleName} ch.${chNums}`);
+            continue;
+          }
+        }
+        await bot.editMessageText(text, {
+          chat_id: config.telegramChatId,
+          message_id: existing.messageId,
+          disable_web_page_preview: true,
+          ...opts,
+        });
         state.titleMessages[key] = {
           messageId: existing.messageId,
           chatId: config.telegramChatId,

@@ -29,7 +29,9 @@ module.exports = {
   /** Базовый URL для картинок с сервера. По умолчанию = siteUrl. */
   imageBaseUrl: (process.env.IMAGE_BASE_URL || process.env.SITE_URL || 'https://tomilo-lib.ru').replace(/\/$/, ''),
   /** Базовый URL для картинок из облака (например S3). Если задан, при относительном coverImage пробуем оба варианта. */
-  imageCloudBaseUrl: process.env.IMAGE_CLOUD_BASE_URL ? String(process.env.IMAGE_CLOUD_BASE_URL).replace(/\/$/, '') : null,
+  imageCloudBaseUrl: process.env.IMAGE_CLOUD_BASE_URL
+    ? String(process.env.IMAGE_CLOUD_BASE_URL).replace(/\/$/, '')
+    : 'https://s3.regru.cloud/tomilolib',
   pollIntervalMs: Math.max(60_000, parseInt(process.env.POLL_INTERVAL_MS || '300000', 10)),
   statePath: process.env.STATE_PATH || '.bot-state.json',
 
