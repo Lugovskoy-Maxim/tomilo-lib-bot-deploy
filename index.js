@@ -74,7 +74,10 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
   }
 }
 
-function formatChaptersLine(chapters) {
+/**
+ * @param {object} opts - { forceRange?: boolean } — при true для нескольких глав всегда показывать диапазон "Главы 1–88", не перечисление
+ */
+function formatChaptersLine(chapters, opts = {}) {
   if (!Array.isArray(chapters) || chapters.length === 0) return 'Главы —';
   const nums = chapters.map((ch) => ch.chapterNumber).sort((a, b) => a - b);
   const latest = chapters.reduce((acc, ch) => {
@@ -89,8 +92,11 @@ function formatChaptersLine(chapters) {
     const line = dateStr ? `Глава ${nums[0]} 💎 · ${dateStr}` : `Глава ${nums[0]} 💎`;
     return line;
   }
-  const consecutive = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
-  const range = consecutive ? `Главы ${nums[0]}–${nums[nums.length - 1]}` : `Главы ${nums.join(', ')}`;
+  const forceRange = opts.forceRange === true;
+  const consecutive = !forceRange && nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+  const range = forceRange || consecutive
+    ? `Главы ${nums[0]}–${nums[nums.length - 1]}`
+    : `Главы ${nums.join(', ')}`;
   const line = dateStr ? `${range} 💎 · ${dateStr}` : `${range} 💎`;
   return line;
 }
@@ -130,15 +136,17 @@ function translateType(type) {
 
 /**
  * @param {object} opts - { milestoneNumbers?: number[], isNewTitleOnSite?: boolean }
- *   isNewTitleOnSite: true — заголовок "Новый тайтл на сайте" (дата создания тайтла = сегодня)
+ *   isNewTitleOnSite: true — заголовок "Новый тайтл на сайте", главы диапазоном, + короткое описание
  */
 function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const title = titleName || 'Без названия';
   const isPlural = (Array.isArray(chapters) ? chapters.length : 1) > 1;
-  const header = opts.isNewTitleOnSite
+  const isNewTitleOnSite = opts.isNewTitleOnSite === true;
+  const header = isNewTitleOnSite
     ? '<b>✨ Новый тайтл на сайте ✨</b>'
     : (isPlural ? '<b>✨ НОВЫЕ ГЛАВЫ ✨</b>' : '<b>✨ НОВАЯ ГЛАВА ✨</b>');
-  const chapterLine = formatChaptersLine(Array.isArray(chapters) ? chapters : [chapters]);
+  const chaptersArr = Array.isArray(chapters) ? chapters : [chapters];
+  const chapterLine = formatChaptersLine(chaptersArr, { forceRange: isNewTitleOnSite });
   const ageStr = formatAgeLimit(titleInfo.ageLimit);
   const titleLine = ageStr ? `<b>${escapeHtml(title)}</b> (${ageStr})` : `<b>${escapeHtml(title)}</b>`;
 
@@ -157,6 +165,19 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const totalCh = titleInfo.totalChapters != null && Number(titleInfo.totalChapters) > 0 ? Number(titleInfo.totalChapters) : 0;
   const totalLine = totalCh ? `<i>Всего глав: ${totalCh}</i>` : '';
 
+  let descLine = '';
+  if (isNewTitleOnSite) {
+    const rawDesc = titleInfo.description || titleInfo.shortDescription || '';
+    if (rawDesc && typeof rawDesc === 'string') {
+      const trimmed = rawDesc.trim();
+      if (trimmed) {
+        descLine = trimmed.length > NEW_TITLE_DESCRIPTION_MAX_LEN
+          ? escapeHtml(trimmed.slice(0, NEW_TITLE_DESCRIPTION_MAX_LEN).trim()) + '…'
+          : escapeHtml(trimmed);
+      }
+    }
+  }
+
   const milestoneNumbers = opts.milestoneNumbers && Array.isArray(opts.milestoneNumbers) ? opts.milestoneNumbers : [];
   const milestoneLine = milestoneNumbers.length > 0
     ? `🎉 Юбилейная глава! Достигли ${milestoneNumbers.join(', ')} глав.`
@@ -171,6 +192,7 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
     '─────────────────',
     ...(metaLine ? [metaLine] : []),
     ...(genreStr ? [genreStr] : []),
+    ...(descLine ? [descLine] : []),
     ...(author ? [author] : []),
     ...(artist ? [artist] : []),
     ...(totalLine ? [totalLine] : []),
