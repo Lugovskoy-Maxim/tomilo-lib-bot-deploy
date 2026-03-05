@@ -516,13 +516,13 @@ async function run() {
       isNewTitleOnSite,
     });
     const imageUrls = getImageUrls(titleForCover);
-    const imageUrl = getImageUrl(titleForCover);
-    if (DEBUG) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
-    let photoPayload = imageUrl;
+    if (DEBUG && imageUrls.length > 0) console.log('Image URLs:', imageUrls[0].slice(0, 80) + '…');
+    let photoPayload = null;
     if (imageUrls.length > 0) {
-      const buf = await fetchImageBufferFromUrls(imageUrls);
-      if (buf) photoPayload = buf;
-      else {
+      photoPayload = await fetchImageBufferFromUrls(imageUrls);
+      if (photoPayload) {
+        if (DEBUG) console.log('Cover downloaded, size:', photoPayload.length);
+      } else {
         if (DEBUG) console.log('Image fetch failed for all URLs');
         else console.log('Cover fetch failed (check IMAGE_BASE_URL / IMAGE_CLOUD_BASE_URL):', imageUrls[0].slice(0, 60) + '…');
       }
