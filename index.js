@@ -106,7 +106,7 @@ function formatAgeLimit(ageLimit) {
   if (ageLimit === undefined || ageLimit === null) return '';
   const n = Number(ageLimit);
   if (Number.isNaN(n) || n < 0) return '';
-  if (n >= 18) return '18+';
+  if (n >= 18) return '18+ 🔞';
   if (n >= 16) return '16+';
   if (n >= 12) return '12+';
   if (n >= 6) return '6+';
