@@ -129,12 +129,15 @@ function translateType(type) {
 }
 
 /**
- * @param {object} opts - { milestoneNumbers?: number[] } — юбилейные номера глав для строки "🎉 Юбилейная глава!"
+ * @param {object} opts - { milestoneNumbers?: number[], isNewTitleOnSite?: boolean }
+ *   isNewTitleOnSite: true — заголовок "Новый тайтл на сайте" (дата создания тайтла = сегодня)
  */
 function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const title = titleName || 'Без названия';
   const isPlural = (Array.isArray(chapters) ? chapters.length : 1) > 1;
-  const header = isPlural ? '<b>✨ НОВЫЕ ГЛАВЫ ✨</b>' : '<b>✨ НОВАЯ ГЛАВА ✨</b>';
+  const header = opts.isNewTitleOnSite
+    ? '<b>✨ Новый тайтл на сайте ✨</b>'
+    : (isPlural ? '<b>✨ НОВЫЕ ГЛАВЫ ✨</b>' : '<b>✨ НОВАЯ ГЛАВА ✨</b>');
   const chapterLine = formatChaptersLine(Array.isArray(chapters) ? chapters : [chapters]);
   const ageStr = formatAgeLimit(titleInfo.ageLimit);
   const titleLine = ageStr ? `<b>${escapeHtml(title)}</b> (${ageStr})` : `<b>${escapeHtml(title)}</b>`;
@@ -179,7 +182,7 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
 
 function siteButton(siteUrl, titleSlug) {
   const url = `${siteUrl}/titles/${titleSlug || ''}`;
-  return { reply_markup: { inline_keyboard: [[{ text: 'Читать ↗', url }]] } };
+  return { reply_markup: { inline_keyboard: [[{ text: 'Читать на сайте ↗', url }]] } };
 }
 
 function escapeHtml(s) {
@@ -355,9 +358,9 @@ async function run() {
   const today = getTodayString();
   if (!state.titleMessages) state.titleMessages = {};
 
-  // Новый тайтл = главы добавляются к тайтлу, созданному сегодня (проверяется в цикле по главам через isTitleCreatedToday).
-
   // ======== Обработка новых глав ========
+  // Сообщения отправляем как обычно. Если тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"
+  // и в течение дня обновляем это сообщение при добавлении новых глав.
   const chapters = await fetchLatestChapters();
   const toPost = [];
   let maxSeen = lastProcessed;
@@ -422,99 +425,8 @@ async function run() {
       shortDescription: t?.shortDescription,
     };
 
-    // Новый тайтл = главы добавляются к тайтлу, созданному сегодня (UTC)
-    const isNewTitleToday = isTitleCreatedToday(t?.createdAt);
-    if (isNewTitleToday && config.notifyNewTitles) {
-      const opts = { parse_mode: 'HTML', ...siteButton(config.siteUrl, titleSlug) };
-      const isEditNewTitle = existing && existing.date === today && existing.messageId && existing.isNewTitle;
-
-      if (isEditNewTitle) {
-        const mergedChapters = (existing.chapters && existing.chapters.length)
-          ? mergeChapters(existing.chapters, newChapters)
-          : newChapters;
-        const updatedTitle = await fetchTitleBySlug(titleSlug);
-        const updatedT = updatedTitle || t;
-        // Все данные для сообщения берём из свежего ответа API, чтобы количество глав и остальное было актуальным
-        const updatedInfo = {
-          ageLimit: updatedT?.ageLimit ?? titleInfo.ageLimit,
-          releaseYear: updatedT?.releaseYear ?? titleInfo.releaseYear,
-          type: updatedT?.type ?? titleInfo.type,
-          status: updatedT?.status ?? titleInfo.status,
-          genres: updatedT?.genres ?? titleInfo.genres,
-          author: updatedT?.author ?? titleInfo.author,
-          artist: updatedT?.artist ?? titleInfo.artist,
-          totalChapters: updatedT?.totalChapters != null ? updatedT.totalChapters : (mergedChapters.length || titleInfo.totalChapters),
-          description: updatedT?.description ?? titleInfo.description,
-          shortDescription: updatedT?.shortDescription ?? titleInfo.shortDescription,
-        };
-        const text = formatNewTitleMessage(titleName, updatedInfo);
-        try {
-          if (existing.hasPhoto) {
-            await bot.editMessageCaption(text, {
-              chat_id: config.telegramChatId,
-              message_id: existing.messageId,
-              ...opts,
-            });
-          } else {
-            await bot.editMessageText(text, {
-              chat_id: config.telegramChatId,
-              message_id: existing.messageId,
-              disable_web_page_preview: true,
-              ...opts,
-            });
-          }
-          state.titleMessages[key] = {
-            ...existing,
-            chapters: mergedChapters,
-          };
-          if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-          console.log(`Updated (new title): ${titleName}, глав: ${updatedInfo.totalChapters}`);
-          continue;
-        } catch (editErr) {
-          if (DEBUG) console.log('Edit new-title message failed:', editErr.message);
-        }
-      }
-
-      if (existing && existing.date === today && existing.messageId && !existing.isNewTitle) {
-        continue;
-      }
-      if (isEditNewTitle) {
-        // редактирование не сработало — отправляем как новое не будем, уже есть сообщение
-        continue;
-      }
-
-      const text = formatNewTitleMessage(titleName, titleInfo);
-      const imageUrl = getImageUrl(titleForCover);
-      let photoPayload = imageUrl;
-      if (imageUrl) {
-        const buf = await fetchImageBuffer(imageUrl);
-        if (buf) photoPayload = buf;
-      }
-      try {
-        const result = await sendPhotoOrMessage({
-          photoPayload,
-          text,
-          opts,
-          fileOpts: Buffer.isBuffer(photoPayload) ? { filename: 'cover.jpg', contentType: 'image/jpeg' } : undefined,
-        });
-        const messageId = result && result.message_id;
-        if (messageId) {
-          state.titleMessages[key] = {
-            messageId,
-            chatId: config.telegramChatId,
-            date: today,
-            hasPhoto: !!photoPayload,
-            isNewTitle: true,
-            chapters: newChapters,
-          };
-        }
-        if (groupMaxReleaseTime > 0) maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-        console.log(`Posted (new title today): ${titleName}`);
-      } catch (e) {
-        console.error('Telegram send error:', e.message);
-      }
-      continue;
-    }
+    // Тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"; в течение дня сообщение обновляем при новых главах
+    const isNewTitleOnSite = isTitleCreatedToday(t?.createdAt) && config.notifyNewTitles;
 
     if (config.notifyNewChapters) {
     const keyCh = titleSlug || titleName;
@@ -525,7 +437,29 @@ async function run() {
         .map((c) => c.chapterNumber)
         .filter((num) => config.milestoneChapters.includes(num) && !notified.includes(num));
     }
-    const text = formatChapterMessage(chaptersToShow, titleName, titleInfo, { milestoneNumbers });
+    // При редактировании за сегодня подтягиваем свежие данные тайтла (totalChapters и т.д.)
+    let finalTitleInfo = titleInfo;
+    if (isEdit && titleSlug) {
+      const updatedTitle = await fetchTitleBySlug(titleSlug);
+      if (updatedTitle) {
+        finalTitleInfo = {
+          ageLimit: updatedTitle?.ageLimit ?? titleInfo.ageLimit,
+          releaseYear: updatedTitle?.releaseYear ?? titleInfo.releaseYear,
+          type: updatedTitle?.type ?? titleInfo.type,
+          status: updatedTitle?.status ?? titleInfo.status,
+          genres: updatedTitle?.genres ?? titleInfo.genres,
+          author: updatedTitle?.author ?? titleInfo.author,
+          artist: updatedTitle?.artist ?? titleInfo.artist,
+          totalChapters: updatedTitle?.totalChapters != null ? updatedTitle.totalChapters : (chaptersToShow.length || titleInfo.totalChapters),
+          description: updatedTitle?.description ?? titleInfo.description,
+          shortDescription: updatedTitle?.shortDescription ?? titleInfo.shortDescription,
+        };
+      }
+    }
+    const text = formatChapterMessage(chaptersToShow, titleName, finalTitleInfo, {
+      milestoneNumbers,
+      isNewTitleOnSite,
+    });
     const imageUrl = getImageUrl(titleForCover);
     if (DEBUG) console.log(imageUrl ? `Image: ${imageUrl}` : `No image (cover: ${!!(titleForCover && titleForCover.coverImage)})`);
     let photoPayload = imageUrl;
