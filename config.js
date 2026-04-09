@@ -50,5 +50,8 @@ module.exports = {
   /** Тайтл набрал за день не меньше N просмотров (требует поддержки views в API) */
   notifyDailyViews: parseBool(process.env.NOTIFY_DAILY_VIEWS, false),
   dailyViewsMin: Math.max(1, parseInt(process.env.DAILY_VIEWS_MIN || '1000', 10)),
+
+  /** Использовать улучшенные обложки с информацией о сайте */
+  useEnhancedCovers: parseBool(process.env.USE_ENHANCED_COVERS, false),
 };
 

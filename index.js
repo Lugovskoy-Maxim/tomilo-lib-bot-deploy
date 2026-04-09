@@ -197,7 +197,7 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
     ...(artist ? [artist] : []),
     ...(totalLine ? [totalLine] : []),
     '',
-    'Оставьте впечатления в комментариях 👇',
+    'Оставьте впечатления в комментариях на сайте👇',
   ].filter((line) => line !== undefined && line !== null);
   return lines.join('\n');
 }
@@ -260,7 +260,7 @@ function formatNewTitleMessage(titleName, titleInfo = {}) {
     ...(totalLine ? [totalLine] : []),
     ...(descLine ? ['', descLine] : []),
     '',
-    'Оставьте впечатления в комментариях 👇',
+    'Оставьте впечатления в комментариях на сайте 👇',
   ].filter(Boolean);
   return lines.join('\n');
 }
