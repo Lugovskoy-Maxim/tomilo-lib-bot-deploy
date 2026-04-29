@@ -75,7 +75,7 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
 }
 
 /**
- * @param {object} opts - { forceRange?: boolean } — при true для нескольких глав всегда показывать диапазон "Главы 1–88", не перечисление
+ * @param {object} opts - { forceRange?: boolean, maxChaptersShown?: number=20, maxLineLength?: number=200 }
  */
 function formatChaptersLine(chapters, opts = {}) {
   if (!Array.isArray(chapters) || chapters.length === 0) return 'Главы —';
@@ -88,20 +88,71 @@ function formatChaptersLine(chapters, opts = {}) {
   const dateStr = latest.releaseDate
     ? new Date(latest.releaseDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
     : '';
+  const maxShown = opts.maxChaptersShown ?? 20;
+  const maxLen = opts.maxLineLength ?? 200;
+  
   if (nums.length === 1) {
     const line = dateStr ? `Глава ${nums[0]} 💎 · ${dateStr}` : `Глава ${nums[0]} 💎`;
-    return line;
+    return clampText(line, maxLen);
   }
+  
   const forceRange = opts.forceRange === true;
   const consecutive = !forceRange && nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
-  const range = forceRange || consecutive
-    ? `Главы ${nums[0]}–${nums[nums.length - 1]}`
-    : `Главы ${nums.join(', ')}`;
-  const line = dateStr ? `${range} 💎 · ${dateStr}` : `${range} 💎`;
-  return line;
+  
+  if (forceRange || consecutive) {
+    const range = `Главы ${nums[0]}–${nums[nums.length - 1]}`;
+    const line = dateStr ? `${range} 💎 · ${dateStr}` : `${range} 💎`;
+    return clampText(line, maxLen);
+  }
+  
+  // Новое: группировка диапазонов для длинных не-consecutive списков
+  if (nums.length > maxShown) {
+    const ranges = groupIntoRanges(nums);
+    const chaptersStr = formatRanges(ranges, nums.length);
+    const line = dateStr ? `Главы ${chaptersStr} 💎 · ${dateStr}` : `Главы ${chaptersStr} 💎`;
+    return clampText(line, maxLen);
+  }
+  
+  // Fallback: полный список
+  const chaptersStr = nums.join(', ');
+  const line = dateStr ? `Главы ${chaptersStr} 💎 · ${dateStr}` : `Главы ${chaptersStr} 💎`;
+  return clampText(line, maxLen);
 }
 
 /** Возрастное ограничение: 0–18 из схемы тайтла → "0+", "6+", "12+", "16+", "18+" */
+/** Группирует отсортированные номера глав в диапазоны consecutive чисел */
+function groupIntoRanges(nums) {
+  if (nums.length === 0) return [];
+  const ranges = [];
+  let start = nums[0];
+  let prev = nums[0];
+  for (let i = 1; i < nums.length; i++) {
+    if (nums[i] === prev + 1) {
+      prev = nums[i];
+    } else {
+      ranges.push([start, prev]);
+      start = prev = nums[i];
+    }
+  }
+  ranges.push([start, prev]);
+  return ranges;
+}
+
+/** Форматирует диапазоны: "854-950, 2270-2371" или сокращает если много */
+function formatRanges(ranges, totalCount, maxRanges = 5, maxLen = 150) {
+  if (ranges.length === 1) {
+    const [start, end] = ranges[0];
+    return start === end ? `${start}` : `${start}–${end}`;
+  }
+  let str = ranges.slice(0, maxRanges).map(([s, e]) => 
+    s === e ? `${s}` : `${s}–${e}`
+  ).join(', ');
+  if (ranges.length > maxRanges) {
+    str += ` (+${totalCount - ranges.slice(0, maxRanges).reduce((sum, r) => sum + (r[1] - r[0] + 1), 0)} глав)`;
+  }
+  return str.length > maxLen ? str.slice(0, maxLen - 3) + '...' : str;
+}
+
 function formatAgeLimit(ageLimit) {
   if (ageLimit === undefined || ageLimit === null) return '';
   const n = Number(ageLimit);
