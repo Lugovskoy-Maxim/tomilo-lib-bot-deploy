@@ -53,5 +53,9 @@ module.exports = {
 
   /** Использовать улучшенные обложки с информацией о сайте */
   useEnhancedCovers: parseBool(process.env.USE_ENHANCED_COVERS, false),
+  donateUrl: process.env.DONATE_URL,
+  donateUrlTbank: process.env.DONATE_URL_TBANK,
+  donateText: ` 💖 Поддержать проект <a href="${process.env.DONATE_URL}">Boosty</a>`,
+  donateTextTbank: ` или ТБанк ${process.env.DONATE_URL_TBANK}`,
 };
 
