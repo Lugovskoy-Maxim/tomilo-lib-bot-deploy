@@ -87,7 +87,8 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
 }
 
 /**
- * @param {object} opts - { forceRange?: boolean, maxChaptersShown?: number=20, maxLineLength?: number=200 }
+ * Оформление строки глав: обычный релиз (💎), премиум (🔒), открытие по freeAt (🔓) — как updateHighlight в /titles/latest-updates.
+ * @param {object} opts - { forceRange?: boolean, maxChaptersShown?: number=20, maxLineLength?: number=200, updateHighlight?: 'premium'|'went_free' }
  */
 function formatChaptersLine(chapters, opts = {}) {
   if (!Array.isArray(chapters) || chapters.length === 0) return "Главы —";
@@ -105,12 +106,20 @@ function formatChaptersLine(chapters, opts = {}) {
     : "";
   const maxShown = opts.maxChaptersShown ?? 20;
   const maxLen = opts.maxLineLength ?? 200;
+  const highlight = opts.updateHighlight;
+
+  const decorateBody = (body) => {
+    if (highlight === "premium") {
+      return dateStr ? `🔒 ${body} · ${dateStr}` : `🔒 ${body}`;
+    }
+    if (highlight === "went_free") {
+      return dateStr ? `🔓 ${body} · ${dateStr}` : `🔓 ${body}`;
+    }
+    return dateStr ? `💎 ${body} 💎 · ${dateStr}` : `💎 ${body} 💎`;
+  };
 
   if (nums.length === 1) {
-    const line = dateStr
-      ? `💎 Глава ${nums[0]} 💎 · ${dateStr}`
-      : `💎 Глава ${nums[0]} 💎`;
-    return clampText(line, maxLen);
+    return clampText(decorateBody(`Глава ${nums[0]}`), maxLen);
   }
 
   const forceRange = opts.forceRange === true;
@@ -119,26 +128,19 @@ function formatChaptersLine(chapters, opts = {}) {
 
   if (forceRange || consecutive) {
     const range = `Главы ${nums[0]}–${nums[nums.length - 1]}`;
-    const line = dateStr ? `${range} 💎 · ${dateStr}` : `${range} 💎`;
-    return clampText(line, maxLen);
+    return clampText(decorateBody(range), maxLen);
   }
 
   // Новое: группировка диапазонов для длинных не-consecutive списков
   if (nums.length > maxShown) {
     const ranges = groupIntoRanges(nums);
     const chaptersStr = formatRanges(ranges, nums.length);
-    const line = dateStr
-      ? `💎 Главы ${chaptersStr} 💎 · ${dateStr}`
-      : `💎 Главы ${chaptersStr} 💎`;
-    return clampText(line, maxLen);
+    return clampText(decorateBody(`Главы ${chaptersStr}`), maxLen);
   }
 
   // Fallback: полный список
   const chaptersStr = nums.join(", ");
-  const line = dateStr
-    ? `💎 Главы ${chaptersStr} 💎 · ${dateStr}`
-    : `💎 Главы ${chaptersStr} 💎`;
-  return clampText(line, maxLen);
+  return clampText(decorateBody(`Главы ${chaptersStr}`), maxLen);
 }
 
 /** Возрастное ограничение: 0–18 из схемы тайтла → "0+", "6+", "12+", "16+", "18+" */
@@ -209,21 +211,31 @@ function translateType(type) {
 }
 
 /**
- * @param {object} opts - { milestoneNumbers?: number[], isNewTitleOnSite?: boolean }
+ * @param {object} opts - { milestoneNumbers?: number[], isNewTitleOnSite?: boolean, updateHighlight?: 'premium'|'went_free' }
  *   isNewTitleOnSite: true — заголовок "Новый тайтл на сайте", главы диапазоном, + короткое описание
  */
 function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const title = titleName || "Без названия";
   const isPlural = (Array.isArray(chapters) ? chapters.length : 1) > 1;
   const isNewTitleOnSite = opts.isNewTitleOnSite === true;
+  const uh = opts.updateHighlight;
   const header = isNewTitleOnSite
     ? "<b>🔥 Новый тайтл на сайте 🔥</b>"
-    : isPlural
-      ? "<b>✨ НОВЫЕ ГЛАВЫ ✨</b>"
-      : "<b>✨ НОВАЯ ГЛАВА ✨</b>";
+    : uh === "went_free"
+      ? isPlural
+        ? "<b>🔓 Открыты для всех</b>"
+        : "<b>🔓 Открыта для всех</b>"
+      : uh === "premium"
+        ? isPlural
+          ? "<b>🔒 НОВЫЕ ПРЕМИУМ-ГЛАВЫ</b>"
+          : "<b>🔒 НОВАЯ ПРЕМИУМ-ГЛАВА</b>"
+        : isPlural
+          ? "<b>✨ НОВЫЕ ГЛАВЫ ✨</b>"
+          : "<b>✨ НОВАЯ ГЛАВА ✨</b>";
   const chaptersArr = Array.isArray(chapters) ? chapters : [chapters];
   const chapterLine = formatChaptersLine(chaptersArr, {
     forceRange: isNewTitleOnSite,
+    updateHighlight: isNewTitleOnSite ? undefined : uh,
   });
   const ageStr = formatAgeLimit(titleInfo.ageLimit);
   const titleLine = ageStr
@@ -287,11 +299,19 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
       ? `🎉 Юбилейная глава! Достигли ${milestoneNumbers.join(", ")} глав.`
       : "";
 
+  const accessHint =
+    !isNewTitleOnSite && uh === "went_free"
+      ? "<i>По расписанию доступна бесплатно всем читателям.</i>"
+      : !isNewTitleOnSite && uh === "premium"
+        ? "<i>Премиум: по подписке или бесплатно позже по расписанию на сайте.</i>"
+        : "";
+
   const lines = [
     header,
     "",
     titleLine,
     chapterLine,
+    ...(accessHint ? [accessHint] : []),
     ...(milestoneLine ? [milestoneLine] : []),
     "─────────────────",
     ...(metaLine ? [metaLine] : []),
@@ -477,15 +497,24 @@ async function fetchImageBufferFromUrls(urls, timeoutMs = 15000) {
   return null;
 }
 
-async function fetchLatestChapters() {
-  const url = `${config.apiUrl}/chapters?page=1&limit=100&sortBy=releaseDate&sortOrder=desc`;
+/**
+ * Лента как на сайте: lastUpdate учитывает freeAt (открытие всем) и премиум (updatedAt до freeAt),
+ * плюс updateHighlight — см. GET /titles/latest-updates на сервере.
+ */
+async function fetchLatestUpdatesTitles() {
+  const q = new URLSearchParams({
+    page: "1",
+    limit: "100",
+    includeAdult: "true",
+  });
+  const url = `${config.apiUrl}/titles/latest-updates?${q}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`API latest-updates ${res.status}: ${await res.text()}`);
   const json = await res.json();
-  if (!json.success || !json.data || !Array.isArray(json.data.chapters)) {
-    throw new Error("Invalid API response");
+  if (!json.success || !Array.isArray(json.data)) {
+    throw new Error("Invalid API response (latest-updates)");
   }
-  return json.data.chapters;
+  return json.data;
 }
 
 /** Подгружаем тайтл по slug — в списке глав не всегда есть coverImage. */
@@ -561,48 +590,70 @@ async function run() {
   // ======== Обработка новых глав ========
   // Сообщения отправляем как обычно. Если тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"
   // и в течение дня обновляем это сообщение при добавлении новых глав.
-  const chapters = await fetchLatestChapters();
+  const updates = await fetchLatestUpdatesTitles();
   const toPost = [];
   let maxSeen = lastProcessed;
   let maxNotified = lastProcessed;
 
-  for (const ch of chapters) {
-    const title = ch.titleId || {};
-    const titleName = title.name || "Без названия";
-    const titleSlug = title.slug || "";
-    const releaseTime = ch.releaseDate ? new Date(ch.releaseDate).getTime() : 0;
-    if (releaseTime > 0) maxSeen = Math.max(maxSeen || 0, releaseTime);
-    if (lastProcessed != null && releaseTime <= lastProcessed) continue;
+  for (const row of updates) {
+    const activityTime = row.lastUpdate ? new Date(row.lastUpdate).getTime() : 0;
+    if (!Number.isFinite(activityTime) || activityTime <= 0) continue;
+    if (activityTime > 0) maxSeen = Math.max(maxSeen || 0, activityTime);
+    if (lastProcessed != null && activityTime <= lastProcessed) continue;
+
+    const numsRaw =
+      Array.isArray(row.chapters) && row.chapters.length > 0
+        ? row.chapters
+        : row.chapterNumber != null
+          ? [row.chapterNumber]
+          : [];
+    const nums = numsRaw
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (nums.length === 0) continue;
+
+    const sortedNums = [...new Set(nums)].sort((a, b) => a - b);
+    const lastIso = row.lastUpdate
+      ? typeof row.lastUpdate === "string"
+        ? row.lastUpdate
+        : new Date(row.lastUpdate).toISOString()
+      : null;
+    const newChapters = sortedNums.map((chapterNumber) => ({
+      chapterNumber,
+      releaseDate: lastIso,
+    }));
+    const highlight =
+      row.updateHighlight === "premium" || row.updateHighlight === "went_free"
+        ? row.updateHighlight
+        : undefined;
+
     toPost.push({
-      chapter: ch,
-      titleName,
-      titleSlug,
-      title: ch.titleId || {},
-      releaseTime,
+      titleName: row.title || "Без названия",
+      titleSlug: row.slug || "",
+      title: {
+        name: row.title,
+        slug: row.slug,
+        coverImage: row.cover,
+      },
+      releaseTime: activityTime,
+      updateHighlight: highlight,
+      newChapters,
     });
   }
 
-  // Newest first in API, then group by title so one message per title
+  // Как раньше: API отдаёт от новых к старым — переворачиваем, чтобы слать в хронологическом порядке
   toPost.reverse();
-  const byTitle = new Map();
-  for (const item of toPost) {
-    const key = item.titleSlug || item.titleName;
-    if (!byTitle.has(key)) byTitle.set(key, []);
-    byTitle.get(key).push(item);
-  }
 
-  for (const [, items] of byTitle) {
-    const first = items[0];
-    const { titleName, titleSlug, title } = first;
+  for (const bundle of toPost) {
+    const {
+      titleName,
+      titleSlug,
+      title,
+      releaseTime: groupMaxReleaseTime,
+      updateHighlight,
+      newChapters,
+    } = bundle;
     const key = titleSlug || titleName;
-    const groupMaxReleaseTime = items.reduce(
-      (acc, it) => Math.max(acc, it.releaseTime || 0),
-      0,
-    );
-    const newChapters = items.map((i) => ({
-      chapterNumber: i.chapter.chapterNumber,
-      releaseDate: i.chapter.releaseDate,
-    }));
     const existing = state.titleMessages[key];
 
     let chaptersToShow;
@@ -688,6 +739,7 @@ async function run() {
         {
           milestoneNumbers,
           isNewTitleOnSite,
+          updateHighlight,
         },
       );
       const imageUrls = getImageUrls(titleForCover);
