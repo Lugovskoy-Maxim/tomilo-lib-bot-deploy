@@ -12,6 +12,8 @@ function loadState(statePath) {
       lastLeaderboard: Array.isArray(data.lastLeaderboard) ? data.lastLeaderboard : [],
       // Юбилейные главы: { [titleSlug]: [50, 100, ...] } — уже оповещённые пороги
       notifiedMilestones: data.notifiedMilestones && typeof data.notifiedMilestones === 'object' ? data.notifiedMilestones : {},
+      // Уже отправленные в Telegram номера глав по slug (чтобы не дублировать старые из API)
+      notifiedChapters: data.notifiedChapters && typeof data.notifiedChapters === 'object' ? data.notifiedChapters : {},
       // Для "просмотров за день": дата и снимок просмотров по slug (для следующего расчёта дельты)
       lastViewsDate: data.lastViewsDate || null,
       lastViewsBySlug: data.lastViewsBySlug && typeof data.lastViewsBySlug === 'object' ? data.lastViewsBySlug : {},
@@ -23,6 +25,7 @@ function loadState(statePath) {
       titleMessages: {},
       lastLeaderboard: [],
       notifiedMilestones: {},
+      notifiedChapters: {},
       lastViewsDate: null,
       lastViewsBySlug: {},
     };
@@ -43,6 +46,7 @@ function saveState(statePath, state) {
     titleMessages: state.titleMessages,
     lastLeaderboard: state.lastLeaderboard,
     notifiedMilestones: state.notifiedMilestones,
+    notifiedChapters: state.notifiedChapters,
     lastViewsDate: state.lastViewsDate,
     lastViewsBySlug: state.lastViewsBySlug,
   };

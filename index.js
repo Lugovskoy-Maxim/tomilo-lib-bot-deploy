@@ -404,6 +404,58 @@ function formatNewTitleMessage(titleName, titleInfo = {}) {
   return lines.join("\n");
 }
 
+/** Номера глав, о которых уже уходило уведомление (по slug тайтла). */
+function getNotifiedChapterSet(state, titleKey) {
+  const list = state.notifiedChapters?.[titleKey];
+  return new Set(
+    Array.isArray(list)
+      ? list.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0)
+      : [],
+  );
+}
+
+function recordNotifiedChapters(state, titleKey, chapterNumbers) {
+  if (!titleKey || !Array.isArray(chapterNumbers) || chapterNumbers.length === 0)
+    return;
+  if (!state.notifiedChapters) state.notifiedChapters = {};
+  const prev = state.notifiedChapters[titleKey] || [];
+  const merged = [
+    ...new Set([
+      ...prev.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0),
+      ...chapterNumbers
+        .map((n) => Number(n))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    ]),
+  ].sort((a, b) => a - b);
+  // Не раздуваем state: храним последние 200 номеров
+  state.notifiedChapters[titleKey] =
+    merged.length > 200 ? merged.slice(-200) : merged;
+}
+
+/**
+ * API в latest-updates отдаёт несколько «недавних» глав тайтла разом (группировка на сервере).
+ * Для премиум / went_free оставляем только реально новые номера; старые из пачки отбрасываем.
+ */
+function resolveChapterNumbersToNotify(row, sortedNums, alreadyNotified) {
+  let fresh = sortedNums.filter((n) => !alreadyNotified.has(n));
+  if (fresh.length === 0) return [];
+
+  const highlight =
+    row.updateHighlight === "premium" || row.updateHighlight === "went_free"
+      ? row.updateHighlight
+      : undefined;
+
+  if (!highlight) return fresh;
+
+  // В ленте к премиум-событию часто «прилипают» старые номера тайтла — берём только главу из chapterNumber.
+  const maxFromApi =
+    row.chapterNumber != null ? Number(row.chapterNumber) : NaN;
+  if (Number.isFinite(maxFromApi) && fresh.includes(maxFromApi)) {
+    return [maxFromApi];
+  }
+  return [Math.max(...fresh)];
+}
+
 /** Объединяет уже показанные главы с новыми, без дубликатов по chapterNumber. */
 function mergeChapters(existing, newChapters) {
   const byNum = new Map(existing.map((c) => [c.chapterNumber, c]));
@@ -586,6 +638,7 @@ async function run() {
 
   const today = getTodayString();
   if (!state.titleMessages) state.titleMessages = {};
+  if (!state.notifiedChapters) state.notifiedChapters = {};
 
   // ======== Обработка новых глав ========
   // Сообщения отправляем как обычно. Если тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"
@@ -613,12 +666,24 @@ async function run() {
     if (nums.length === 0) continue;
 
     const sortedNums = [...new Set(nums)].sort((a, b) => a - b);
+    const titleKey = row.slug || row.title || "";
+    const alreadyNotified = getNotifiedChapterSet(state, titleKey);
+    const numsToNotify = resolveChapterNumbersToNotify(
+      row,
+      sortedNums,
+      alreadyNotified,
+    );
+    if (numsToNotify.length === 0) {
+      if (activityTime > 0) maxNotified = Math.max(maxNotified || 0, activityTime);
+      continue;
+    }
+
     const lastIso = row.lastUpdate
       ? typeof row.lastUpdate === "string"
         ? row.lastUpdate
         : new Date(row.lastUpdate).toISOString()
       : null;
-    const newChapters = sortedNums.map((chapterNumber) => ({
+    const newChapters = numsToNotify.map((chapterNumber) => ({
       chapterNumber,
       releaseDate: lastIso,
     }));
@@ -658,17 +723,6 @@ async function run() {
 
     let chaptersToShow;
     let isEdit = false;
-    if (
-      existing &&
-      existing.date === today &&
-      existing.messageId &&
-      existing.chapters
-    ) {
-      chaptersToShow = mergeChapters(existing.chapters, newChapters);
-      isEdit = true;
-    } else {
-      chaptersToShow = newChapters;
-    }
 
     // Подгружаем тайтл по slug (coverImage и createdAt могут быть только в полном ответе)
     let titleForCover = title;
@@ -693,6 +747,19 @@ async function run() {
     // Тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"; в течение дня сообщение обновляем при новых главах
     const isNewTitleOnSite =
       isTitleCreatedToday(t?.createdAt) && config.notifyNewTitles;
+
+    if (
+      isNewTitleOnSite &&
+      existing &&
+      existing.date === today &&
+      existing.messageId &&
+      existing.chapters
+    ) {
+      chaptersToShow = mergeChapters(existing.chapters, newChapters);
+      isEdit = true;
+    } else {
+      chaptersToShow = newChapters;
+    }
 
     if (config.notifyNewChapters) {
       const keyCh = titleSlug || titleName;
@@ -793,6 +860,11 @@ async function run() {
             }
             if (groupMaxReleaseTime > 0)
               maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+            recordNotifiedChapters(
+              state,
+              keyCh,
+              newChapters.map((c) => c.chapterNumber),
+            );
             const chNums = chaptersToShow
               .map((c) => c.chapterNumber)
               .join(", ");
@@ -835,6 +907,11 @@ async function run() {
               }
               if (groupMaxReleaseTime > 0)
                 maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+              recordNotifiedChapters(
+                state,
+                keyCh,
+                newChapters.map((c) => c.chapterNumber),
+              );
               const chNums = chaptersToShow
                 .map((c) => c.chapterNumber)
                 .join(", ");
@@ -865,6 +942,11 @@ async function run() {
           }
           if (groupMaxReleaseTime > 0)
             maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+          recordNotifiedChapters(
+            state,
+            keyCh,
+            newChapters.map((c) => c.chapterNumber),
+          );
           const chNums = chaptersToShow.map((c) => c.chapterNumber).join(", ");
           console.log(`Updated: ${titleName} ch.${chNums}`);
           continue;
@@ -905,6 +987,11 @@ async function run() {
         }
         if (groupMaxReleaseTime > 0)
           maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+        recordNotifiedChapters(
+          state,
+          keyCh,
+          newChapters.map((c) => c.chapterNumber),
+        );
         const chNums = chaptersToShow.map((c) => c.chapterNumber).join(", ");
         console.log(
           `Posted: ${titleName} ch.${chNums}${photoPayload ? " (with cover)" : " (no cover)"}`,
@@ -936,6 +1023,11 @@ async function run() {
             }
             if (groupMaxReleaseTime > 0)
               maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+            recordNotifiedChapters(
+              state,
+              keyCh,
+              newChapters.map((c) => c.chapterNumber),
+            );
             console.log(
               `Posted (no photo): ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(", ")}`,
             );
