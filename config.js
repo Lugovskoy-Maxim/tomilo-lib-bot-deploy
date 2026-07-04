@@ -36,8 +36,12 @@ module.exports = {
   statePath: process.env.STATE_PATH || '.bot-state.json',
 
   // --- Оповещения (вкл/выкл в конфиге) ---
-  /** Оповещения о новых главах */
+  /** Оповещения о новых главах в канал */
   notifyNewChapters: parseBool(process.env.NOTIFY_NEW_CHAPTERS, true),
+  /** Личные уведомления о главах в закладках (очередь API) */
+  notifyPersonalBookmarks: parseBool(process.env.NOTIFY_PERSONAL_BOOKMARKS, true),
+  /** Секрет для /telegram/bot/* (тот же, что TELEGRAM_BOT_API_SECRET на API) */
+  botApiSecret: (process.env.BOT_API_SECRET || process.env.TELEGRAM_BOT_API_SECRET || '').trim(),
   /** Оповещения «Новый тайтл на сайте» — когда к тайтлу, созданному сегодня, добавляются главы */
   notifyNewTitles: parseBool(process.env.NOTIFY_NEW_TITLES, true),
   /** Таблица лидеров: уведомлять об изменении позиций в рейтинге (sortBy: rating или views) */

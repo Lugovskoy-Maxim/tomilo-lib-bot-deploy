@@ -2,6 +2,7 @@ process.env.NTBA_FIX_350 = true; // убирает DeprecationWarning при о�
 const TelegramBot = require("node-telegram-bot-api");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
+const { runPersonalNotifications } = require("./personal-notifications");
 
 const bot = new TelegramBot(config.telegramBotToken, { polling: false });
 
@@ -1147,6 +1148,7 @@ async function loop() {
   console.log("Checking for new titles and chapters...");
   try {
     await run();
+    await runPersonalNotifications(bot);
   } catch (e) {
     console.error("Run error:", e.message);
   }
@@ -1192,6 +1194,8 @@ async function main() {
     "| Poll:",
     config.pollIntervalMs / 1000,
     "s",
+    "| Personal bookmarks:",
+    config.notifyPersonalBookmarks && config.botApiSecret ? "on" : "off",
   );
   if (!(await checkChat())) process.exit(1);
   loop();
