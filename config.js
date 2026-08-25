@@ -21,17 +21,6 @@ const parseMilestoneChapters = (v) => {
     .filter((n, i, arr) => arr.indexOf(n) === i);
 };
 
-const donationLinks = [
-  process.env.DONATE_URL
-    ? `<a href="${process.env.DONATE_URL}">Boosty</a>`
-    : '',
-  process.env.DONATE_URL_TBANK
-    ? /^https?:\/\//i.test(process.env.DONATE_URL_TBANK)
-      ? `<a href="${process.env.DONATE_URL_TBANK}">Т-Банк</a>`
-      : `Т-Банк: <code>${process.env.DONATE_URL_TBANK}</code>`
-    : '',
-].filter(Boolean);
-
 module.exports = {
   telegramBotToken: required('TELEGRAM_BOT_TOKEN').trim(),
   telegramChatId: String(required('TELEGRAM_CHAT_ID')).trim(),
@@ -72,10 +61,4 @@ module.exports = {
 
   /** Использовать улучшенные обложки с информацией о сайте */
   useEnhancedCovers: parseBool(process.env.USE_ENHANCED_COVERS, false),
-  donateUrl: process.env.DONATE_URL,
-  donateUrlTbank: process.env.DONATE_URL_TBANK,
-  /** Появляется в сообщениях только если настроена хотя бы одна ссылка. */
-  donateText: donationLinks.length
-    ? `💖 Поддержать проект: ${donationLinks.join(' · ')}`
-    : '',
 };

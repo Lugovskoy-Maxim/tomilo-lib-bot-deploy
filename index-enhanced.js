@@ -342,7 +342,6 @@ async function handleNewChaptersWithEnhancedCovers(newChapters, titleInfo) {
   const message = `
 <b>${titleInfo.name}</b>
 ${chaptersLine}
-
 <a href="${config.siteUrl}/title/${titleInfo.slug}">Читать на сайте</a>
   `.trim();
 
@@ -367,12 +366,10 @@ ${chaptersLine}
 async function handleNewTitleWithEnhancedCover(titleInfo) {
   const message = `
 <b>🆕 Новый тайтл на сайте</b>
-
 <b>${titleInfo.name}</b>
 ${titleInfo.type ? `Тип: ${titleInfo.type}` : ''}
 ${titleInfo.genres ? `Жанры: ${Array.isArray(titleInfo.genres) ? titleInfo.genres.join(', ') : titleInfo.genres}` : ''}
 ${titleInfo.status ? `Статус: ${titleInfo.status}` : ''}
-
 <a href="${config.siteUrl}/title/${titleInfo.slug}">Открыть на сайте</a>
   `.trim();
 

@@ -268,7 +268,7 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   });
   const ageStr = formatAgeLimit(titleInfo.ageLimit);
   const titleLine = ageStr
-    ? `<b>${escapeHtml(title)}</b> (${ageStr})`
+    ? `<b>${escapeHtml(title)}</b> · ${ageStr}`
     : `<b>${escapeHtml(title)}</b>`;
 
   const typeStr = titleInfo.type ? translateType(titleInfo.type) : "";
@@ -287,21 +287,6 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
     .map((g) => escapeHtml(String(g).trim()))
     .filter(Boolean)
     .join(", ");
-
-  const author =
-    titleInfo.author && String(titleInfo.author).trim()
-      ? `Автор: ${escapeHtml(String(titleInfo.author).trim())}`
-      : "";
-  const artist =
-    titleInfo.artist && String(titleInfo.artist).trim()
-      ? `Художник: ${escapeHtml(String(titleInfo.artist).trim())}`
-      : "";
-
-  const totalCh =
-    titleInfo.totalChapters != null && Number(titleInfo.totalChapters) > 0
-      ? Number(titleInfo.totalChapters)
-      : 0;
-  const totalLine = totalCh ? `<i>Всего глав: ${totalCh}</i>` : "";
 
   let descLine = "";
   if (isNewTitleOnSite) {
@@ -337,21 +322,13 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
 
   const lines = [
     header,
-    "",
     titleLine,
     chapterLine,
     ...(accessHint ? [accessHint] : []),
     ...(milestoneLine ? [milestoneLine] : []),
-    ...(metaLine || genreStr || descLine || author || artist || totalLine ? ["────────────"] : []),
     ...(metaLine ? [metaLine] : []),
     ...(genreStr ? [genreStr] : []),
-    ...(descLine ? [descLine] : []),
-    ...(author ? [author] : []),
-    ...(artist ? [artist] : []),
-    ...(totalLine ? [totalLine] : []),
-    ...(config.donateText ? ["", config.donateText] : []),
-    "",
-    "💬 Делитесь впечатлениями в комментариях на сайте.",
+    ...(isNewTitleOnSite && descLine ? [descLine] : []),
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -400,11 +377,6 @@ function formatNewTitleMessage(titleName, titleInfo = {}) {
       : "";
   const metaParts = [typeStr, yearStr].filter(Boolean);
   const metaLine = metaParts.length ? `<i>${metaParts.join(" · ")}</i>` : "";
-  const totalCh =
-    titleInfo.totalChapters != null && Number(titleInfo.totalChapters) >= 0
-      ? Number(titleInfo.totalChapters)
-      : null;
-  const totalLine = totalCh != null ? `Глав: ${totalCh}` : "";
   let descLine = "";
   const rawDesc = titleInfo.description || titleInfo.shortDescription || "";
   if (rawDesc && typeof rawDesc === "string") {
@@ -422,11 +394,7 @@ function formatNewTitleMessage(titleName, titleInfo = {}) {
     "",
     titleLine,
     ...(metaLine ? [metaLine] : []),
-    ...(totalLine ? [totalLine] : []),
     ...(descLine ? ["", descLine] : []),
-    "",
-    "💬 Делитесь впечатлениями в комментариях на сайте.",
-    ...(config.donateText ? ["", config.donateText] : []),
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -863,8 +831,6 @@ async function run() {
         parse_mode: "HTML",
         ...siteButton(config.siteUrl, titleSlug),
       };
-      // const donatButton = { reply_markup: { inline_keyboard: [[{ text: 'Поддержать проект 💖', url: config.donateUrl }]] } };
-
       if (isEdit && existing) {
         try {
           if (existing.hasPhoto) {
