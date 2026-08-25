@@ -20,6 +20,9 @@ services:
       - ALL
     cap_add:
       - NET_ADMIN
+      # Нужны entrypoint только для перехода root → node после запуска WireGuard.
+      - SETUID
+      - SETGID
     devices:
       - /dev/net/tun:/dev/net/tun
     pids_limit: 80
