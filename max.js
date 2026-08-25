@@ -1,4 +1,5 @@
 const config = require('./config');
+const { waitForMessageSlot } = require('./message-rate-limiter');
 
 const API_URL = 'https://platform-api2.max.ru/messages';
 const MAX_TEXT_LIMIT = 4000;
@@ -58,6 +59,7 @@ async function request(method, url, body) {
 async function sendOrEditMaxMessage({ text, titleSlug, messageId }) {
   if (!isEnabled()) return null;
   const body = makeBody(text, titleSlug);
+  await waitForMessageSlot();
   if (messageId) {
     await request('PUT', `${API_URL}?message_id=${encodeURIComponent(messageId)}`, body);
     return { messageId, edited: true };

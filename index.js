@@ -4,6 +4,7 @@ const config = require("./config");
 const { loadState, saveState } = require("./state");
 const { runPersonalNotifications } = require("./personal-notifications");
 const { isMaxEnabled, sendOrEditMaxMessage } = require("./max");
+const { waitForMessageSlot } = require("./message-rate-limiter");
 
 const bot = new TelegramBot(config.telegramBotToken, { polling: false });
 
@@ -35,6 +36,7 @@ function looksLikeCaptionTooLongError(msg) {
 async function sendMessageSafe(text, opts) {
   const raw = String(text || "");
   if (raw.length <= TG_MAX_MESSAGE_LEN) {
+    await waitForMessageSlot();
     return bot.sendMessage(config.telegramChatId, raw, {
       disable_web_page_preview: true,
       ...opts,
@@ -48,6 +50,7 @@ async function sendMessageSafe(text, opts) {
     console.log(
       `Message too long (${raw.length}), sending plain-text truncated`,
     );
+  await waitForMessageSlot();
   return bot.sendMessage(config.telegramChatId, plain, {
     disable_web_page_preview: true,
     ...rest,
@@ -68,6 +71,7 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
   }
 
   try {
+    await waitForMessageSlot();
     return await bot.sendPhoto(
       config.telegramChatId,
       photoPayload,
@@ -113,6 +117,39 @@ async function sendMaxBroadcast(text, titleSlug) {
   } catch (error) {
     console.error('MAX broadcast error:', error.message);
   }
+}
+
+const MOSCOW_TIME = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Moscow',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+function timeToMinutes(value) {
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+/** Возвращает время ожидания до конца тихих часов по Москве или 0. */
+function getQuietHoursDelayMs(now = new Date()) {
+  if (config.quietHoursStart === config.quietHoursEnd) return 0;
+  const values = Object.fromEntries(
+    MOSCOW_TIME.formatToParts(now)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const current = values.hour * 60 + values.minute;
+  const start = timeToMinutes(config.quietHoursStart);
+  const end = timeToMinutes(config.quietHoursEnd);
+  const isQuiet = start < end
+    ? current >= start && current < end
+    : current >= start || current < end;
+  if (!isQuiet) return 0;
+  let minutesUntilEnd = (end - current + 1440) % 1440;
+  if (minutesUntilEnd === 0) minutesUntilEnd = 1440;
+  return Math.max(1_000, minutesUntilEnd * 60_000 - values.second * 1_000 - now.getMilliseconds());
 }
 
 /**
@@ -704,8 +741,16 @@ async function run() {
 
   // Как раньше: API отдаёт от новых к старым — переворачиваем, чтобы слать в хронологическом порядке
   toPost.reverse();
+  let publicNotificationAttempts = 0;
 
   for (const bundle of toPost) {
+    if (
+      config.notifyNewChapters &&
+      publicNotificationAttempts >= config.maxPublicNotificationsPerRun
+    ) {
+      console.log(`Public notification limit reached (${config.maxPublicNotificationsPerRun}); remaining updates will be sent later`);
+      break;
+    }
     const {
       titleName,
       titleSlug,
@@ -758,6 +803,7 @@ async function run() {
     }
 
     if (config.notifyNewChapters) {
+      publicNotificationAttempts += 1;
       const keyCh = titleSlug || titleName;
       let milestoneNumbers = [];
       if (
@@ -1151,6 +1197,15 @@ async function run() {
 
 async function loop() {
   console.log("Checking for new titles and chapters...");
+  const quietDelay = getQuietHoursDelayMs();
+  if (quietDelay > 0) {
+    const wakeAt = new Date(Date.now() + quietDelay).toLocaleTimeString('ru-RU', {
+      timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit',
+    });
+    console.log(`Quiet hours (Moscow): notifications paused until ${wakeAt}`);
+    setTimeout(loop, quietDelay);
+    return;
+  }
   try {
     await run();
     await runPersonalNotifications(bot);

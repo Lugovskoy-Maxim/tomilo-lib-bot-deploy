@@ -2,6 +2,7 @@
  * Личные уведомления о новых главах в закладках (очередь API tomilo-lib-server).
  */
 const config = require('./config');
+const { waitForMessageSlot } = require('./message-rate-limiter');
 
 function escapeHtml(s) {
   if (!s) return '';
@@ -130,6 +131,7 @@ async function sendPersonalNotification(bot, item) {
 
   if (photoPayload && text.length <= 1024) {
     try {
+      await waitForMessageSlot();
       await bot.sendPhoto(item.chatId, photoPayload, opts, {
         filename: 'cover.jpg',
         contentType: 'image/jpeg',
@@ -146,6 +148,7 @@ async function sendPersonalNotification(bot, item) {
     }
   }
 
+  await waitForMessageSlot();
   await bot.sendMessage(item.chatId, text, opts);
   return true;
 }
@@ -170,7 +173,7 @@ async function runPersonalNotifications(bot) {
   if (!items.length) return;
 
   const delivered = [];
-  for (const item of items) {
+  for (const item of items.slice(0, config.maxPersonalNotificationsPerRun)) {
     if (!item.chatId || !item.notificationId) continue;
     try {
       await sendPersonalNotification(bot, item);

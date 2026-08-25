@@ -21,6 +21,18 @@ const parseMilestoneChapters = (v) => {
     .filter((n, i, arr) => arr.indexOf(n) === i);
 };
 
+const parseTimeOfDay = (v, fallback) => {
+  const value = String(v || fallback);
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return fallback;
+  return value;
+};
+
+const parseBoundedInt = (v, fallback, min, max) => {
+  const parsed = parseInt(v, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
 module.exports = {
   telegramBotToken: required('TELEGRAM_BOT_TOKEN').trim(),
   telegramChatId: String(required('TELEGRAM_CHAT_ID')).trim(),
@@ -37,6 +49,12 @@ module.exports = {
     ? String(process.env.IMAGE_CLOUD_BASE_URL).replace(/\/$/, '')
     : 'https://s3.regru.cloud/tomilolib',
   pollIntervalMs: Math.max(60_000, parseInt(process.env.POLL_INTERVAL_MS || '300000', 10)),
+  /** Ночные тихие часы по Москве. Одинаковые значения отключают паузу. */
+  quietHoursStart: parseTimeOfDay(process.env.QUIET_HOURS_START, '00:00'),
+  quietHoursEnd: parseTimeOfDay(process.env.QUIET_HOURS_END, '08:00'),
+  /** Ограничение одной волны, чтобы накопившиеся обновления не стали спамом. */
+  maxPublicNotificationsPerRun: parseBoundedInt(process.env.MAX_PUBLIC_NOTIFICATIONS_PER_RUN, 5, 1, 20),
+  maxPersonalNotificationsPerRun: parseBoundedInt(process.env.MAX_PERSONAL_NOTIFICATIONS_PER_RUN, 5, 1, 20),
   statePath: process.env.STATE_PATH || '.bot-state.json',
 
   // --- Оповещения (вкл/выкл в конфиге) ---
