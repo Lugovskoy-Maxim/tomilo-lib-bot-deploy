@@ -9,6 +9,12 @@ Telegram-бот для уведомлений о новых главах, тай
 `QUIET_HOURS_END`, `MESSAGE_COOLDOWN_MS`, `MAX_PUBLIC_NOTIFICATIONS_PER_RUN`
 и `MAX_PERSONAL_NOTIFICATIONS_PER_RUN`.
 
+Также бот один раз в московские сутки размещает два отдельных поста: о
+приложении для Android (RuStore и GitHub Releases) и о поддержке проекта.
+Параметры `NOTIFY_DAILY_APP_PROMO` и `NOTIFY_DAILY_SUPPORT` включают их,
+а `DONATE_URL` и `DONATE_URL_TBANK` задают способы поддержки. Публикация
+подчиняется тихим часам и общей очереди сообщений.
+
 ## Запуск в Docker
 
 Скопируйте пример окружения и заполните Telegram-токен и адрес API:

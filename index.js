@@ -157,6 +157,63 @@ function getQuietHoursDelayMs(now = new Date()) {
   return Math.max(1_000, minutesUntilEnd * 60_000 - values.second * 1_000 - now.getMilliseconds());
 }
 
+function getMoscowDate(now = new Date()) {
+  const fields = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  );
+  return `${fields.year}-${fields.month}-${fields.day}`;
+}
+
+function dailyPromoButtons(buttons) {
+  return { reply_markup: { inline_keyboard: buttons.map((button) => [button]) } };
+}
+
+async function runDailyPromotions(state) {
+  const today = getMoscowDate();
+  if (!state.dailyPromotions) state.dailyPromotions = {};
+
+  if (config.notifyDailyAppPromo && state.dailyPromotions.app !== today) {
+    await sendMessageSafe([
+      '<b>📱 Tomilo Lib для Android</b>', '',
+      'Читайте любимые тайтлы удобнее в приложении.',
+      'Выберите способ установки ниже:',
+    ].join('\n'), {
+      parse_mode: 'HTML',
+      ...dailyPromoButtons([
+        { text: 'Скачать в RuStore ↗', url: config.rustoreUrl },
+        { text: 'APK в GitHub Releases ↗', url: config.githubReleasesUrl },
+      ]),
+    });
+    state.dailyPromotions.app = today;
+    console.log('Posted daily Android app promo');
+  }
+
+  const supportButtons = [];
+  if (config.donateUrl) supportButtons.push({ text: 'Поддержать на Boosty 💙', url: config.donateUrl });
+  if (config.donateUrlTbank && /^https?:\/\//i.test(config.donateUrlTbank)) {
+    supportButtons.push({ text: 'Поддержать через Т-Банк ↗', url: config.donateUrlTbank });
+  }
+  if (config.notifyDailySupport && supportButtons.length > 0 && state.dailyPromotions.support !== today) {
+    const text = [
+      '<b>💙 Поддержите Tomilo Lib</b>', '',
+      'Ваша поддержка помогает развивать библиотеку, добавлять тайтлы и улучшать приложение.',
+      ...(config.donateUrlTbank && !/^https?:\/\//i.test(config.donateUrlTbank)
+        ? ['', `Т-Банк: <code>${escapeHtml(config.donateUrlTbank)}</code>`]
+        : []),
+    ].join('\n');
+    await sendMessageSafe(text, {
+      parse_mode: 'HTML',
+      ...dailyPromoButtons(supportButtons),
+    });
+    state.dailyPromotions.support = today;
+    console.log('Posted daily support promo');
+  }
+}
+
 /**
  * Оформление строки глав: обычный релиз (💎), премиум (🔒), открытие по freeAt (🔓) — как updateHighlight в /titles/latest-updates.
  * @param {object} opts - { forceRange?: boolean, maxChaptersShown?: number=20, maxLineLength?: number=200, updateHighlight?: 'premium'|'went_free' }
@@ -1192,6 +1249,8 @@ async function run() {
       console.error("Daily views check error:", e.message);
     }
   }
+
+  await runDailyPromotions(state);
 
   // Оставляем в state только сообщения за сегодня, чтобы не раздувать файл
   const prunedTitleMessages = {};

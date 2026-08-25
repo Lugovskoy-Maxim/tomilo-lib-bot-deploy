@@ -19,6 +19,7 @@ function loadState(statePath) {
       // Для "просмотров за день": дата и снимок просмотров по slug (для следующего расчёта дельты)
       lastViewsDate: data.lastViewsDate || null,
       lastViewsBySlug: data.lastViewsBySlug && typeof data.lastViewsBySlug === 'object' ? data.lastViewsBySlug : {},
+      dailyPromotions: data.dailyPromotions && typeof data.dailyPromotions === 'object' ? data.dailyPromotions : {},
     };
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('State load error:', e.message);
@@ -31,6 +32,7 @@ function loadState(statePath) {
       notifiedChapters: {},
       lastViewsDate: null,
       lastViewsBySlug: {},
+      dailyPromotions: {},
     };
   }
 }
@@ -53,6 +55,7 @@ function saveState(statePath, state) {
     notifiedChapters: state.notifiedChapters,
     lastViewsDate: state.lastViewsDate,
     lastViewsBySlug: state.lastViewsBySlug,
+    dailyPromotions: state.dailyPromotions,
   };
   fs.writeFileSync(statePath, JSON.stringify(toSave, null, 2), 'utf8');
 }

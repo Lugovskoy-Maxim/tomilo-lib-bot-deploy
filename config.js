@@ -55,6 +55,12 @@ module.exports = {
   /** Ограничение одной волны, чтобы накопившиеся обновления не стали спамом. */
   maxPublicNotificationsPerRun: parseBoundedInt(process.env.MAX_PUBLIC_NOTIFICATIONS_PER_RUN, 5, 1, 20),
   maxPersonalNotificationsPerRun: parseBoundedInt(process.env.MAX_PERSONAL_NOTIFICATIONS_PER_RUN, 5, 1, 20),
+  notifyDailyAppPromo: parseBool(process.env.NOTIFY_DAILY_APP_PROMO, true),
+  notifyDailySupport: parseBool(process.env.NOTIFY_DAILY_SUPPORT, true),
+  rustoreUrl: process.env.RUSTORE_URL || 'https://www.rustore.ru/catalog/app/ru.tomilo.lib.mobile',
+  githubReleasesUrl: process.env.GITHUB_RELEASES_URL || 'https://github.com/Lugovskoy-Maxim/tomilo-lib-android/releases',
+  donateUrl: (process.env.DONATE_URL || '').trim(),
+  donateUrlTbank: (process.env.DONATE_URL_TBANK || '').trim(),
   statePath: process.env.STATE_PATH || '.bot-state.json',
 
   // --- Оповещения (вкл/выкл в конфиге) ---
