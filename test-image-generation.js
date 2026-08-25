@@ -1,6 +1,5 @@
 const ImageGenerator = require('./image-generator');
 const fs = require('fs').promises;
-const path = require('path');
 
 async function testGeneration() {
   console.log('Тестирование генерации изображений...');
@@ -17,15 +16,16 @@ async function testGeneration() {
     console.log('1. Генерация обложки для тайтла...');
     
     const titleInfo = {
-      name: 'Solo Leveling',
-      coverImage: 'https://images.unsplash.com/photo-1635805737707-575885ab0820?w=400&h=600&fit=crop', // пример обложки
-      type: 'manhwa',
-      releaseYear: 2018,
-      status: 'completed',
-      genres: ['Фэнтези', 'Экшен', 'Приключения', 'Драма'],
-      rating: 4.8,
-      viewsCount: 1250000,
-      totalChapters: 200
+      name: 'Владыка Мертвых',
+      coverImage: 'https://cdn.tomilo-lib.ru/titles/6a8dff02d8a905b73af922c4/cover.jpeg',
+      chapterNumber: 10,
+      type: 'manhua',
+      releaseYear: 2026,
+      status: 'ongoing',
+      genres: ['Монстр', 'Выживание', 'Артефакты'],
+      rating: 0,
+      viewsCount: 0,
+      totalChapters: 11,
     };
 
     const titleCoverBuffer = await generator.generateTitleCover(titleInfo);
@@ -51,6 +51,7 @@ async function testGeneration() {
     
     const titleInfoNoCover = {
       name: 'Великолепный тайтл без обложки',
+      chapterNumber: 45,
       type: 'manga',
       releaseYear: 2023,
       status: 'ongoing',

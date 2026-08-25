@@ -78,5 +78,5 @@ module.exports = {
   dailyViewsMin: Math.max(1, parseInt(process.env.DAILY_VIEWS_MIN || '1000', 10)),
 
   /** Использовать улучшенные обложки с информацией о сайте */
-  useEnhancedCovers: parseBool(process.env.USE_ENHANCED_COVERS, false),
+  useEnhancedCovers: parseBool(process.env.USE_ENHANCED_COVERS, true),
 };

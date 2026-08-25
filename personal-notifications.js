@@ -28,8 +28,9 @@ function formatPersonalChapterMessage(item) {
   const chapterNum = item.chapterNumber ?? '?';
   const lines = [
     '<b>✨ Новая глава в закладках</b>',
+    '',
     `<b>${title}</b>`,
-    `📖 Глава ${chapterNum}`,
+    `<b>📖 Глава ${chapterNum}</b>`,
   ];
   return lines.join('\n');
 }

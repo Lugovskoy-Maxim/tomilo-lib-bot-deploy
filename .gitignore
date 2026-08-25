@@ -3,3 +3,6 @@ node_modules/
 .bot-state.json
 wireguard/wg0.conf
 *.log
+test-title-cover.jpg
+test-site-promo.jpg
+test-no-cover.jpg

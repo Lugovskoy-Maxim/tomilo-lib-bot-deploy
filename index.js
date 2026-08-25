@@ -5,8 +5,13 @@ const { loadState, saveState } = require("./state");
 const { runPersonalNotifications } = require("./personal-notifications");
 const { isMaxEnabled, sendOrEditMaxMessage } = require("./max");
 const { waitForMessageSlot } = require("./message-rate-limiter");
+const ImageGenerator = require("./image-generator");
 
 const bot = new TelegramBot(config.telegramBotToken, { polling: false });
+const postImageGenerator = new ImageGenerator({
+  siteName: "Tomilo Lib",
+  siteUrl: config.siteUrl,
+});
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
 
@@ -175,13 +180,14 @@ function formatChaptersLine(chapters, opts = {}) {
   const highlight = opts.updateHighlight;
 
   const decorateBody = (body) => {
+    const emphasized = `<b>${body}</b>`;
     if (highlight === "premium") {
-      return dateStr ? `🔒 ${body} · ${dateStr}` : `🔒 ${body}`;
+      return dateStr ? `🔒 ${emphasized} · ${dateStr}` : `🔒 ${emphasized}`;
     }
     if (highlight === "went_free") {
-      return dateStr ? `🔓 ${body} · ${dateStr}` : `🔓 ${body}`;
+      return dateStr ? `🔓 ${emphasized} · ${dateStr}` : `🔓 ${emphasized}`;
     }
-    return dateStr ? `📖 ${body} · ${dateStr}` : `📖 ${body}`;
+    return dateStr ? `📖 ${emphasized} · ${dateStr}` : `📖 ${emphasized}`;
   };
 
   if (nums.length === 1) {
@@ -359,14 +365,16 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
 
   const lines = [
     header,
+    "",
     titleLine,
+    "",
     chapterLine,
     ...(accessHint ? [accessHint] : []),
     ...(milestoneLine ? [milestoneLine] : []),
     ...(metaLine ? [metaLine] : []),
     ...(genreStr ? [genreStr] : []),
     ...(isNewTitleOnSite && descLine ? [descLine] : []),
-  ].filter(Boolean);
+  ].filter((line) => line !== undefined && line !== null);
   return lines.join("\n");
 }
 
@@ -432,7 +440,7 @@ function formatNewTitleMessage(titleName, titleInfo = {}) {
     titleLine,
     ...(metaLine ? [metaLine] : []),
     ...(descLine ? ["", descLine] : []),
-  ].filter(Boolean);
+  ].filter((line) => line !== undefined && line !== null);
   return lines.join("\n");
 }
 
@@ -858,6 +866,18 @@ async function run() {
       if (imageUrls.length > 0) {
         photoPayload = await fetchImageBufferFromUrls(imageUrls);
         if (photoPayload) {
+          if (config.useEnhancedCovers) {
+            try {
+              photoPayload = await postImageGenerator.generateTitleCover({
+                ...finalTitleInfo,
+                name: titleName,
+                coverImage: photoPayload,
+                chapterNumber: chaptersToShow[chaptersToShow.length - 1]?.chapterNumber,
+              });
+            } catch (coverError) {
+              console.warn("Enhanced cover generation failed; sending original:", coverError.message);
+            }
+          }
           if (DEBUG)
             console.log("Cover downloaded, size:", photoPayload.length);
         } else {

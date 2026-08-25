@@ -10,12 +10,13 @@ class ImageGenerator {
     this.options = {
       width: 1200,
       height: 630,
-      backgroundColor: '#1a1a2e',
-      primaryColor: '#00adb5',
-      secondaryColor: '#eeeeee',
-      accentColor: '#ff2e63',
+      backgroundColor: '#111827',
+      primaryColor: '#60a5fa',
+      secondaryColor: '#f8fafc',
+      accentColor: '#a78bfa',
       fontFamily: 'Arial',
       logoPath: options.logoPath,
+      logoUrl: options.logoUrl || 'https://tomilo-lib.ru/favicons/favicon-512x512.png',
       siteName: options.siteName || 'Tomilo Lib',
       siteUrl: options.siteUrl || 'https://tomilo-lib.ru',
       ...options
@@ -69,120 +70,129 @@ class ImageGenerator {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Фон
+    // Фирменный тёмный фон сайта.
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, width, height);
+    const glow = ctx.createRadialGradient(240, 80, 0, 240, 80, 700);
+    glow.addColorStop(0, 'rgba(96, 165, 250, 0.28)');
+    glow.addColorStop(1, 'rgba(17, 24, 39, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
 
-    // Градиент сверху
-    const gradient = ctx.createLinearGradient(0, 0, width, 0);
-    gradient.addColorStop(0, 'rgba(0, 173, 181, 0.3)');
-    gradient.addColorStop(1, 'rgba(255, 46, 99, 0.3)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height * 0.15);
-
-    // Загружаем обложку тайтла, если есть
     let coverImage = null;
-    if (titleInfo.coverImage) {
-      try {
-        coverImage = await loadImage(titleInfo.coverImage);
-      } catch (err) {
-        console.warn('Не удалось загрузить обложку:', err.message);
-      }
+    try {
+      if (titleInfo.coverImage) coverImage = await this.loadSourceImage(titleInfo.coverImage);
+    } catch (err) {
+      console.warn('Не удалось загрузить обложку:', err.message);
     }
 
-    // Рисуем обложку
-    if (coverImage) {
-      // Обложка слева
-      const coverWidth = width * 0.35;
-      const coverHeight = height * 0.7;
-      const coverX = width * 0.05;
-      const coverY = height * 0.15;
-
-      // Скругленные углы для обложки
-      ctx.save();
-      this.roundRect(ctx, coverX, coverY, coverWidth, coverHeight, 20);
-      ctx.clip();
-      ctx.drawImage(coverImage, coverX, coverY, coverWidth, coverHeight);
-      ctx.restore();
-
-      // Рамка вокруг обложки
-      ctx.strokeStyle = primaryColor;
-      ctx.lineWidth = 3;
-      this.roundRect(ctx, coverX, coverY, coverWidth, coverHeight, 20);
-      ctx.stroke();
+    // Обложка тайтла занимает правую часть, без искажения пропорций.
+    const coverX = 760;
+    const coverWidth = 440;
+    if (coverImage) this.drawCoverCrop(ctx, coverImage, coverX, 0, coverWidth, height);
+    else {
+      ctx.fillStyle = '#1f2937';
+      ctx.fillRect(coverX, 0, coverWidth, height);
     }
+    const coverShade = ctx.createLinearGradient(coverX - 130, 0, coverX + 100, 0);
+    coverShade.addColorStop(0, backgroundColor);
+    coverShade.addColorStop(1, 'rgba(17, 24, 39, 0)');
+    ctx.fillStyle = coverShade;
+    ctx.fillRect(coverX - 130, 0, 230, height);
 
-    // Информация справа
-    const infoX = coverImage ? width * 0.45 : width * 0.1;
-    const infoY = height * 0.2;
-    const infoWidth = width * 0.5;
-
-    // Название тайтла
-    ctx.font = `bold 48px ${fontFamily}`;
+    const logo = await this.loadLogo();
+    const logoSize = 74;
+    if (logo) ctx.drawImage(logo, 54, 46, logoSize, logoSize);
+    ctx.font = `bold 28px ${fontFamily}`;
     ctx.fillStyle = secondaryColor;
+    ctx.fillText(this.options.siteName, 148, 92);
+
+    ctx.fillStyle = 'rgba(248, 250, 252, 0.68)';
+    ctx.font = `bold 23px ${fontFamily}`;
+    ctx.fillText('НОВАЯ ГЛАВА', 58, 205);
+
     ctx.textAlign = 'left';
-    this.wrapText(ctx, titleInfo.name || 'Без названия', infoX, infoY, infoWidth, 60);
+    ctx.font = `bold 52px ${fontFamily}`;
+    ctx.fillStyle = 'rgba(248, 250, 252, 0.88)';
+    const titleBottom = this.drawWrappedText(ctx, titleInfo.name || 'Без названия', 58, 282, 630, 62, 3);
 
-    // Тип и год
-    const typeYearY = infoY + 80;
-    ctx.font = `24px ${fontFamily}`;
-    ctx.fillStyle = primaryColor;
-    
-    const typeYearText = [
-      titleInfo.type ? this.translateType(titleInfo.type) : null,
-      titleInfo.releaseYear ? titleInfo.releaseYear.toString() : null
+    const chapterNumber = titleInfo.chapterNumber ?? titleInfo.latestChapter ?? titleInfo.chapter;
+    const chapterLabel = chapterNumber != null ? `Глава ${chapterNumber}` : 'Новая глава';
+    ctx.font = `bold 58px ${fontFamily}`;
+    ctx.fillStyle = 'rgba(167, 139, 250, 0.72)';
+    ctx.fillText(chapterLabel, 58, Math.min(titleBottom + 88, 560));
+
+    const meta = [
+      titleInfo.type ? this.translateType(titleInfo.type) : '',
+      titleInfo.releaseYear ? String(titleInfo.releaseYear) : '',
     ].filter(Boolean).join(' · ');
-    
-    if (typeYearText) {
-      ctx.fillText(typeYearText, infoX, typeYearY);
+    if (meta) {
+      ctx.font = `22px ${fontFamily}`;
+      ctx.fillStyle = 'rgba(248, 250, 252, 0.62)';
+      ctx.fillText(meta, 58, 592);
     }
 
-    // Статус
-    const statusY = typeYearY + 40;
-    if (titleInfo.status) {
-      ctx.font = `20px ${fontFamily}`;
-      ctx.fillStyle = this.getStatusColor(titleInfo.status);
-      ctx.fillText(this.translateStatus(titleInfo.status), infoX, statusY);
-    }
-
-    // Жанры
-    const genresY = statusY + 40;
-    if (titleInfo.genres && titleInfo.genres.length > 0) {
-      ctx.font = `20px ${fontFamily}`;
-      ctx.fillStyle = secondaryColor;
-      const genresText = titleInfo.genres.slice(0, 3).join(' • ');
-      ctx.fillText(genresText, infoX, genresY);
-    }
-
-    // Рейтинг и просмотры
-    const statsY = genresY + 60;
-    ctx.font = `bold 22px ${fontFamily}`;
-    
-    if (titleInfo.rating) {
-      ctx.fillStyle = accentColor;
-      ctx.fillText(`★ ${titleInfo.rating.toFixed(1)}`, infoX, statsY);
-    }
-
-    if (titleInfo.viewsCount) {
-      ctx.fillStyle = primaryColor;
-      const viewsText = `👁 ${this.formatNumber(titleInfo.viewsCount)}`;
-      const viewsWidth = ctx.measureText(viewsText).width;
-      ctx.fillText(viewsText, infoX + 150, statsY);
-    }
-
-    // Всего глав
-    if (titleInfo.totalChapters) {
-      ctx.fillStyle = secondaryColor;
-      const chaptersText = `Глав: ${titleInfo.totalChapters}`;
-      const chaptersWidth = ctx.measureText(chaptersText).width;
-      ctx.fillText(chaptersText, infoX + 300, statsY);
-    }
-
-    // Логотип и информация о сайте внизу
-    await this.drawSiteFooter(ctx, width, height);
-
-    // Возвращаем буфер
     return canvas.toBuffer('image/jpeg', { quality: 0.9 });
+  }
+
+  async loadSourceImage(source) {
+    if (Buffer.isBuffer(source)) return loadImage(source);
+    if (typeof source === 'string' && /^https?:\/\//i.test(source)) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      const response = await fetch(source, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return loadImage(Buffer.from(await response.arrayBuffer()));
+    }
+    return loadImage(source);
+  }
+
+  async loadLogo() {
+    if (this.logo) return this.logo;
+    try {
+      if (this.options.logoPath && fs.existsSync(this.options.logoPath)) {
+        this.logo = await loadImage(this.options.logoPath);
+      } else {
+        this.logo = await this.loadSourceImage(this.options.logoUrl);
+      }
+      return this.logo;
+    } catch (error) {
+      console.warn('Не удалось загрузить логотип:', error.message);
+      return null;
+    }
+  }
+
+  drawCoverCrop(ctx, image, x, y, width, height) {
+    const sourceRatio = image.width / image.height;
+    const targetRatio = width / height;
+    let sx = 0; let sy = 0; let sw = image.width; let sh = image.height;
+    if (sourceRatio > targetRatio) {
+      sw = image.height * targetRatio;
+      sx = (image.width - sw) / 2;
+    } else {
+      sh = image.width / targetRatio;
+      sy = (image.height - sh) / 2;
+    }
+    ctx.drawImage(image, sx, sy, sw, sh, x, y, width, height);
+  }
+
+  drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+    const words = String(text).split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (ctx.measureText(next).width > maxWidth && line) {
+        lines.push(line);
+        line = word;
+        if (lines.length === maxLines) break;
+      } else line = next;
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    if (words.join(' ').length > lines.join(' ').length) lines[lines.length - 1] = `${lines[lines.length - 1].replace(/…?$/, '')}…`;
+    lines.forEach((lineText, index) => ctx.fillText(lineText, x, y + index * lineHeight));
+    return y + Math.max(0, lines.length - 1) * lineHeight;
   }
 
   /**

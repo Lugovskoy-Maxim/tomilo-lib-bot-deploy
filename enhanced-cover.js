@@ -31,7 +31,8 @@ class EnhancedCover {
         genres: Array.isArray(titleInfo.genres) ? titleInfo.genres : [],
         rating: titleInfo.rating,
         viewsCount: titleInfo.viewsCount,
-        totalChapters: titleInfo.totalChapters
+        totalChapters: titleInfo.totalChapters,
+        chapterNumber: titleInfo.chapterNumber ?? titleInfo.latestChapter ?? titleInfo.chapter,
       };
 
       // Если есть URL обложки, но нет буфера, попробуем использовать URL
