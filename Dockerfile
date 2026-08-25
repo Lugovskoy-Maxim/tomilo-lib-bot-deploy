@@ -18,7 +18,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-      tini wireguard-tools iproute2 iptables openresolv \
+      tini wireguard-tools iproute2 iptables procps openresolv \
       libcairo2 libpango-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data /etc/wireguard
