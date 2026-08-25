@@ -31,7 +31,6 @@ function makeBody(text, titleSlug) {
   return {
     text: clampText(text),
     format: 'html',
-    disable_link_preview: true,
     ...(attachments.length ? { attachments } : {}),
   };
 }
@@ -65,7 +64,7 @@ async function sendOrEditMaxMessage({ text, titleSlug, messageId }) {
   }
   const data = await request(
     'POST',
-    `${API_URL}?chat_id=${encodeURIComponent(config.maxChatId)}`,
+    `${API_URL}?chat_id=${encodeURIComponent(config.maxChatId)}&disable_link_preview=true`,
     body,
   );
   const newMessageId = data.message_id || data.message?.message_id || data.message?.id;
