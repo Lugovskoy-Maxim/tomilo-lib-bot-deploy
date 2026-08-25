@@ -23,6 +23,7 @@ docker compose up -d --build
    ```sh
    mkdir -p wireguard
    cp wireguard/wg0.conf.example wireguard/wg0.conf
+   chmod 600 wireguard/wg0.conf
    ```
 
 2. Заполните `wireguard/wg0.conf` данными провайдера и в `.env` задайте
