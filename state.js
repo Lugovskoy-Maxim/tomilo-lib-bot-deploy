@@ -20,6 +20,7 @@ function loadState(statePath) {
       lastViewsDate: data.lastViewsDate || null,
       lastViewsBySlug: data.lastViewsBySlug && typeof data.lastViewsBySlug === 'object' ? data.lastViewsBySlug : {},
       dailyPromotions: data.dailyPromotions && typeof data.dailyPromotions === 'object' ? data.dailyPromotions : {},
+      promotionsPauseUntil: Number(data.promotionsPauseUntil) || 0,
     };
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('State load error:', e.message);
@@ -33,6 +34,7 @@ function loadState(statePath) {
       lastViewsDate: null,
       lastViewsBySlug: {},
       dailyPromotions: {},
+      promotionsPauseUntil: 0,
     };
   }
 }
@@ -56,6 +58,7 @@ function saveState(statePath, state) {
     lastViewsDate: state.lastViewsDate,
     lastViewsBySlug: state.lastViewsBySlug,
     dailyPromotions: state.dailyPromotions,
+    promotionsPauseUntil: state.promotionsPauseUntil,
   };
   fs.writeFileSync(statePath, JSON.stringify(toSave, null, 2), 'utf8');
 }

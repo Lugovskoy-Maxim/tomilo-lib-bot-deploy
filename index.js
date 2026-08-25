@@ -174,6 +174,7 @@ function dailyPromoButtons(buttons) {
 
 async function runDailyPromotions(state) {
   const today = getMoscowDate();
+  let sentAny = false;
   if (!state.dailyPromotions) state.dailyPromotions = {};
 
   if (config.notifyDailyAppPromo && state.dailyPromotions.app !== today) {
@@ -189,6 +190,7 @@ async function runDailyPromotions(state) {
       ]),
     });
     state.dailyPromotions.app = today;
+    sentAny = true;
     console.log('Posted daily Android app promo');
   }
 
@@ -210,8 +212,14 @@ async function runDailyPromotions(state) {
       ...dailyPromoButtons(supportButtons),
     });
     state.dailyPromotions.support = today;
+    sentAny = true;
     console.log('Posted daily support promo');
   }
+  if (sentAny) {
+    state.promotionsPauseUntil = Date.now() + config.dailyPromotionPauseMs;
+    return config.dailyPromotionPauseMs;
+  }
+  return 0;
 }
 
 /**
@@ -722,6 +730,11 @@ function formatLeaderboardChangesMessage(changes, sortLabel) {
 
 async function run() {
   const state = loadState(config.statePath);
+  const remainingPromotionPause = Math.max(0, Number(state.promotionsPauseUntil) - Date.now());
+  if (remainingPromotionPause > 0) {
+    console.log(`Daily promotion pause: ${Math.ceil(remainingPromotionPause / 60_000)} min remaining`);
+    return { pauseMs: remainingPromotionPause };
+  }
   let lastProcessed = state.lastProcessedReleaseDate
     ? new Date(state.lastProcessedReleaseDate).getTime()
     : null;
@@ -1250,7 +1263,7 @@ async function run() {
     }
   }
 
-  await runDailyPromotions(state);
+  const promotionPauseMs = await runDailyPromotions(state);
 
   // Оставляем в state только сообщения за сегодня, чтобы не раздувать файл
   const prunedTitleMessages = {};
@@ -1272,6 +1285,7 @@ async function run() {
     titleMessages: prunedTitleMessages,
     maxTitleMessages: prunedMaxTitleMessages,
   });
+  return promotionPauseMs > 0 ? { pauseMs: promotionPauseMs } : undefined;
 }
 
 async function loop() {
@@ -1286,7 +1300,12 @@ async function loop() {
     return;
   }
   try {
-    await run();
+    const result = await run();
+    if (result?.pauseMs > 0) {
+      console.log(`Notifications paused after daily promos for ${Math.ceil(result.pauseMs / 60_000)} min`);
+      setTimeout(loop, result.pauseMs);
+      return;
+    }
     await runPersonalNotifications(bot);
   } catch (e) {
     console.error("Run error:", e.message);
