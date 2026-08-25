@@ -8,6 +8,8 @@ services:
       STATE_PATH: /data/bot-state.json
       # Set to true only when ./wireguard/wg0.conf is mounted and configured.
       WG_ENABLED: "${WG_ENABLED:-false}"
+      # Домены, которые должны оставаться доступны напрямую из контейнера.
+      WG_BYPASS_HOSTS: "${WG_BYPASS_HOSTS:-tomilo-lib.ru}"
       # MAX использует сертификат Минцифры; задайте путь ниже после монтирования CA.
       NODE_EXTRA_CA_CERTS: "${NODE_EXTRA_CA_CERTS:-}"
     volumes:
