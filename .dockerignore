@@ -1,0 +1,9 @@
+node_modules
+.git
+.env
+.bot-state.json
+wireguard
+certs
+*.log
+test-*.jpg
+example-enhanced-cover.jpg

@@ -1,0 +1,11 @@
+# Скопируйте в wireguard/wg0.conf и подставьте параметры провайдера VPN.
+# При AllowedIPs = 0.0.0.0/0 весь трафик ТОЛЬКО контейнера пойдёт через VPN.
+[Interface]
+PrivateKey = REPLACE_WITH_CLIENT_PRIVATE_KEY
+Address = 10.0.0.2/32
+
+[Peer]
+PublicKey = REPLACE_WITH_SERVER_PUBLIC_KEY
+Endpoint = vpn.example.com:51820
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25

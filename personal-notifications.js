@@ -26,12 +26,12 @@ function formatPersonalChapterMessage(item) {
   const title = escapeHtml(item.titleName || 'Тайтл');
   const chapterNum = item.chapterNumber ?? '?';
   const lines = [
-    '<b>✨ НОВАЯ ГЛАВА В ЗАКЛАДКАХ ✨</b>',
+    '<b>✨ Новая глава в закладках</b>',
     '',
     `<b>${title}</b>`,
-    `💎 Глава ${chapterNum} 💎`,
+    `📖 Глава ${chapterNum}`,
     '',
-    'Оставьте впечатления в комментариях на сайте 👇',
+    '💬 Делитесь впечатлениями в комментариях на сайте.',
   ];
   if (config.donateText) {
     lines.push('', config.donateText);

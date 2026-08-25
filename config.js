@@ -21,9 +21,24 @@ const parseMilestoneChapters = (v) => {
     .filter((n, i, arr) => arr.indexOf(n) === i);
 };
 
+const donationLinks = [
+  process.env.DONATE_URL
+    ? `<a href="${process.env.DONATE_URL}">Boosty</a>`
+    : '',
+  process.env.DONATE_URL_TBANK
+    ? /^https?:\/\//i.test(process.env.DONATE_URL_TBANK)
+      ? `<a href="${process.env.DONATE_URL_TBANK}">Т-Банк</a>`
+      : `Т-Банк: <code>${process.env.DONATE_URL_TBANK}</code>`
+    : '',
+].filter(Boolean);
+
 module.exports = {
   telegramBotToken: required('TELEGRAM_BOT_TOKEN').trim(),
   telegramChatId: String(required('TELEGRAM_CHAT_ID')).trim(),
+  /** Дублировать публичные уведомления в MAX. Нужны MAX_BOT_TOKEN и MAX_CHAT_ID. */
+  maxEnabled: parseBool(process.env.MAX_ENABLED, false),
+  maxBotToken: (process.env.MAX_BOT_TOKEN || '').trim(),
+  maxChatId: (process.env.MAX_CHAT_ID || '').trim(),
   apiUrl: (process.env.API_URL || 'http://localhost:3001/api').replace(/\/$/, ''),
   siteUrl: (process.env.SITE_URL || 'https://tomilo-lib.ru').replace(/\/$/, ''),
   /** Базовый URL для картинок с сервера. По умолчанию = siteUrl. */
@@ -59,7 +74,8 @@ module.exports = {
   useEnhancedCovers: parseBool(process.env.USE_ENHANCED_COVERS, false),
   donateUrl: process.env.DONATE_URL,
   donateUrlTbank: process.env.DONATE_URL_TBANK,
-  donateText: ` 💖 Поддержать проект <a href="${process.env.DONATE_URL}">Boosty</a>`,
-  donateTextTbank: ` или ТБанк ${process.env.DONATE_URL_TBANK}`,
+  /** Появляется в сообщениях только если настроена хотя бы одна ссылка. */
+  donateText: donationLinks.length
+    ? `💖 Поддержать проект: ${donationLinks.join(' · ')}`
+    : '',
 };
-

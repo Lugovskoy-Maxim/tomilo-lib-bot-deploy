@@ -366,7 +366,7 @@ ${chaptersLine}
  */
 async function handleNewTitleWithEnhancedCover(titleInfo) {
   const message = `
-<b>✨ НОВЫЙ ТАЙТЛ ✨</b>
+<b>🆕 Новый тайтл на сайте</b>
 
 <b>${titleInfo.name}</b>
 ${titleInfo.type ? `Тип: ${titleInfo.type}` : ''}

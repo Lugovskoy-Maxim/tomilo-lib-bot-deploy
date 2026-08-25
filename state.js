@@ -8,6 +8,8 @@ function loadState(statePath) {
     return {
       lastProcessedReleaseDate: data.lastProcessedReleaseDate ? new Date(data.lastProcessedReleaseDate) : null,
       titleMessages: data.titleMessages && typeof data.titleMessages === 'object' ? data.titleMessages : {},
+      // Сообщения в MAX: { [titleSlug]: { messageId, date } } для обновления анонса в течение дня
+      maxTitleMessages: data.maxTitleMessages && typeof data.maxTitleMessages === 'object' ? data.maxTitleMessages : {},
       // Таблица лидеров: [{ slug, name, position, value }] для сравнения позиций
       lastLeaderboard: Array.isArray(data.lastLeaderboard) ? data.lastLeaderboard : [],
       // Юбилейные главы: { [titleSlug]: [50, 100, ...] } — уже оповещённые пороги
@@ -23,6 +25,7 @@ function loadState(statePath) {
     return {
       lastProcessedReleaseDate: null,
       titleMessages: {},
+      maxTitleMessages: {},
       lastLeaderboard: [],
       notifiedMilestones: {},
       notifiedChapters: {},
@@ -44,6 +47,7 @@ function saveState(statePath, state) {
   const toSave = {
     lastProcessedReleaseDate: state.lastProcessedReleaseDate,
     titleMessages: state.titleMessages,
+    maxTitleMessages: state.maxTitleMessages,
     lastLeaderboard: state.lastLeaderboard,
     notifiedMilestones: state.notifiedMilestones,
     notifiedChapters: state.notifiedChapters,

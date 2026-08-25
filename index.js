@@ -3,6 +3,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
 const { runPersonalNotifications } = require("./personal-notifications");
+const { isMaxEnabled, sendOrEditMaxMessage } = require("./max");
 
 const bot = new TelegramBot(config.telegramBotToken, { polling: false });
 
@@ -87,6 +88,33 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
   }
 }
 
+async function syncMaxTitleMessage(state, key, text, titleSlug, today) {
+  if (!isMaxEnabled()) return;
+  try {
+    const previous = state.maxTitleMessages[key];
+    const result = await sendOrEditMaxMessage({
+      text,
+      titleSlug,
+      messageId: previous?.date === today ? previous.messageId : undefined,
+    });
+    if (result?.messageId) {
+      state.maxTitleMessages[key] = { messageId: result.messageId, date: today };
+    }
+    console.log(`MAX ${result?.edited ? 'updated' : 'posted'}: ${key}`);
+  } catch (error) {
+    console.error(`MAX send error (${key}):`, error.message);
+  }
+}
+
+async function sendMaxBroadcast(text, titleSlug) {
+  if (!isMaxEnabled()) return;
+  try {
+    await sendOrEditMaxMessage({ text, titleSlug });
+  } catch (error) {
+    console.error('MAX broadcast error:', error.message);
+  }
+}
+
 /**
  * Оформление строки глав: обычный релиз (💎), премиум (🔒), открытие по freeAt (🔓) — как updateHighlight в /titles/latest-updates.
  * @param {object} opts - { forceRange?: boolean, maxChaptersShown?: number=20, maxLineLength?: number=200, updateHighlight?: 'premium'|'went_free' }
@@ -116,7 +144,7 @@ function formatChaptersLine(chapters, opts = {}) {
     if (highlight === "went_free") {
       return dateStr ? `🔓 ${body} · ${dateStr}` : `🔓 ${body}`;
     }
-    return dateStr ? `💎 ${body} 💎 · ${dateStr}` : `💎 ${body} 💎`;
+    return dateStr ? `📖 ${body} · ${dateStr}` : `📖 ${body}`;
   };
 
   if (nums.length === 1) {
@@ -221,18 +249,18 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const isNewTitleOnSite = opts.isNewTitleOnSite === true;
   const uh = opts.updateHighlight;
   const header = isNewTitleOnSite
-    ? "<b>🔥 Новый тайтл на сайте 🔥</b>"
+    ? "<b>🆕 Новый тайтл на сайте</b>"
     : uh === "went_free"
       ? isPlural
         ? "<b>🔓 Открыты для всех</b>"
         : "<b>🔓 Открыта для всех</b>"
       : uh === "premium"
         ? isPlural
-          ? "<b>🔒 НОВЫЕ ПРЕМИУМ-ГЛАВЫ</b>"
-          : "<b>🔒 НОВАЯ ПРЕМИУМ-ГЛАВА</b>"
+          ? "<b>🔒 Новые премиум-главы</b>"
+          : "<b>🔒 Новая премиум-глава</b>"
         : isPlural
-          ? "<b>✨ НОВЫЕ ГЛАВЫ ✨</b>"
-          : "<b>✨ НОВАЯ ГЛАВА ✨</b>";
+          ? "<b>✨ Новые главы</b>"
+          : "<b>✨ Новая глава</b>";
   const chaptersArr = Array.isArray(chapters) ? chapters : [chapters];
   const chapterLine = formatChaptersLine(chaptersArr, {
     forceRange: isNewTitleOnSite,
@@ -314,18 +342,17 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
     chapterLine,
     ...(accessHint ? [accessHint] : []),
     ...(milestoneLine ? [milestoneLine] : []),
-    "─────────────────",
+    ...(metaLine || genreStr || descLine || author || artist || totalLine ? ["────────────"] : []),
     ...(metaLine ? [metaLine] : []),
     ...(genreStr ? [genreStr] : []),
     ...(descLine ? [descLine] : []),
     ...(author ? [author] : []),
     ...(artist ? [artist] : []),
     ...(totalLine ? [totalLine] : []),
+    ...(config.donateText ? ["", config.donateText] : []),
     "",
-    `${config.donateText}`,
-    "",
-    "Оставьте впечатления в комментариях на сайте👇",
-  ].filter((line) => line !== undefined && line !== null);
+    "💬 Делитесь впечатлениями в комментариях на сайте.",
+  ].filter(Boolean);
   return lines.join("\n");
 }
 
@@ -391,16 +418,15 @@ function formatNewTitleMessage(titleName, titleInfo = {}) {
     }
   }
   const lines = [
-    "<b>✨ Новый тайтл на сайте ✨</b>",
+    "<b>🆕 Новый тайтл на сайте</b>",
     "",
     titleLine,
     ...(metaLine ? [metaLine] : []),
     ...(totalLine ? [totalLine] : []),
     ...(descLine ? ["", descLine] : []),
     "",
-    "Оставьте впечатления в комментариях на сайте 👇",
-    "",
-    `${config.donateText}`,
+    "💬 Делитесь впечатлениями в комментариях на сайте.",
+    ...(config.donateText ? ["", config.donateText] : []),
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -612,9 +638,9 @@ function formatLeaderboardChangesMessage(changes, sortLabel) {
     const name = escapeHtml(c.name);
     if (c.prevPosition != null && c.newPosition != null) {
       if (c.newPosition < c.prevPosition) {
-        lines.push(`🟢 ${name}: с ${c.prevPosition} на ${c.newPosition} место`);
+        lines.push(`🟢 ${name}: ${c.prevPosition} → ${c.newPosition} место`);
       } else {
-        lines.push(`🔴 ${name}: с ${c.prevPosition} на ${c.newPosition} место`);
+        lines.push(`🔴 ${name}: ${c.prevPosition} → ${c.newPosition} место`);
       }
     } else if (c.prevPosition == null) {
       lines.push(`🆕 ${name}: ${c.newPosition} место (новый в топе)`);
@@ -639,6 +665,7 @@ async function run() {
 
   const today = getTodayString();
   if (!state.titleMessages) state.titleMessages = {};
+  if (!state.maxTitleMessages) state.maxTitleMessages = {};
   if (!state.notifiedChapters) state.notifiedChapters = {};
 
   // ======== Обработка новых глав ========
@@ -870,6 +897,7 @@ async function run() {
               .map((c) => c.chapterNumber)
               .join(", ");
             console.log(`Updated: ${titleName} ch.${chNums}`);
+            await syncMaxTitleMessage(state, key, text, titleSlug, today);
             continue;
           }
           if (!existing.hasPhoto && photoPayload) {
@@ -919,6 +947,7 @@ async function run() {
               console.log(
                 `Updated (restored with cover): ${titleName} ch.${chNums}`,
               );
+              await syncMaxTitleMessage(state, key, text, titleSlug, today);
               continue;
             }
           }
@@ -950,6 +979,7 @@ async function run() {
           );
           const chNums = chaptersToShow.map((c) => c.chapterNumber).join(", ");
           console.log(`Updated: ${titleName} ch.${chNums}`);
+          await syncMaxTitleMessage(state, key, text, titleSlug, today);
           continue;
         } catch (editErr) {
           const errMsg =
@@ -997,6 +1027,7 @@ async function run() {
         console.log(
           `Posted: ${titleName} ch.${chNums}${photoPayload ? " (with cover)" : " (no cover)"}`,
         );
+        await syncMaxTitleMessage(state, key, text, titleSlug, today);
       } catch (e) {
         const errMsg =
           e && typeof e === "object" && "message" in e ? String(e.message) : "";
@@ -1032,6 +1063,7 @@ async function run() {
             console.log(
               `Posted (no photo): ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(", ")}`,
             );
+            await syncMaxTitleMessage(state, key, text, titleSlug, today);
           } catch (e2) {
             console.error("Telegram send error:", e2.message);
           }
@@ -1078,6 +1110,7 @@ async function run() {
           config.leaderboardSort === "views" ? "По просмотрам" : "По рейтингу";
         const text = formatLeaderboardChangesMessage(changes, sortLabel);
         await sendMessageSafe(text, { parse_mode: "HTML" });
+        await sendMaxBroadcast(text);
         console.log(`Posted (leaderboard): ${changes.length} изменений`);
       }
       state.lastLeaderboard = newList;
@@ -1108,7 +1141,7 @@ async function run() {
             const text = [
               "<b>🔥 Рекорд просмотров за день</b>",
               "",
-              `Тайтл <b>${escapeHtml(name)}</b> набрал <b>${delta.toLocaleString("ru-RU")}</b> просмотров за сутки.`,
+              `<b>${escapeHtml(name)}</b> набрал <b>${delta.toLocaleString("ru-RU")}</b> просмотров за сутки.`,
               "",
               `Минимум для оповещения: ${config.dailyViewsMin.toLocaleString("ru-RU")}`,
             ].join("\n");
@@ -1116,6 +1149,7 @@ async function run() {
               parse_mode: "HTML",
               ...siteButton(config.siteUrl, slug),
             });
+            await sendMaxBroadcast(text, slug);
             console.log(`Posted (daily views): ${name} +${delta}`);
           }
         }
@@ -1132,6 +1166,10 @@ async function run() {
   for (const [k, v] of Object.entries(state.titleMessages || {})) {
     if (v && v.date === today) prunedTitleMessages[k] = v;
   }
+  const prunedMaxTitleMessages = {};
+  for (const [k, v] of Object.entries(state.maxTitleMessages || {})) {
+    if (v && v.date === today) prunedMaxTitleMessages[k] = v;
+  }
 
   const lastProcessedStr =
     maxNotified > 0
@@ -1141,6 +1179,7 @@ async function run() {
     ...state,
     lastProcessedReleaseDate: lastProcessedStr || undefined,
     titleMessages: prunedTitleMessages,
+    maxTitleMessages: prunedMaxTitleMessages,
   });
 }
 

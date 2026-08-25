@@ -1,0 +1,30 @@
+services:
+  bot:
+    build: .
+    image: tomilo-lib-bot:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      STATE_PATH: /data/bot-state.json
+      # Set to true only when ./wireguard/wg0.conf is mounted and configured.
+      WG_ENABLED: "${WG_ENABLED:-false}"
+      # MAX использует сертификат Минцифры; задайте путь ниже после монтирования CA.
+      NODE_EXTRA_CA_CERTS: "${NODE_EXTRA_CA_CERTS:-}"
+    volumes:
+      - bot-state:/data
+      - ./wireguard:/etc/wireguard:ro
+      - ./certs:/certs:ro
+    # NET_ADMIN and /dev/net/tun are required only for WireGuard. They affect
+    # this container's network namespace, never the host routing table.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    pids_limit: 80
+    mem_limit: 192m
+    cpus: 0.50
+
+volumes:
+  bot-state:
