@@ -70,13 +70,25 @@ class ImageGenerator {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Фирменный тёмный фон сайта.
-    ctx.fillStyle = backgroundColor;
+    // Многослойный фирменный градиент: глубокий синий слева плавно уходит
+    // в цвет карточки у обложки справа.
+    const baseGradient = ctx.createLinearGradient(0, 0, width, height);
+    baseGradient.addColorStop(0, '#0b1220');
+    baseGradient.addColorStop(0.48, '#172554');
+    baseGradient.addColorStop(0.72, backgroundColor);
+    baseGradient.addColorStop(1, '#0f172a');
+    ctx.fillStyle = baseGradient;
     ctx.fillRect(0, 0, width, height);
-    const glow = ctx.createRadialGradient(240, 80, 0, 240, 80, 700);
-    glow.addColorStop(0, 'rgba(96, 165, 250, 0.28)');
-    glow.addColorStop(1, 'rgba(17, 24, 39, 0)');
-    ctx.fillStyle = glow;
+    const blueGlow = ctx.createRadialGradient(210, 70, 0, 210, 70, 720);
+    blueGlow.addColorStop(0, 'rgba(59, 130, 246, 0.34)');
+    blueGlow.addColorStop(0.58, 'rgba(30, 64, 175, 0.12)');
+    blueGlow.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    ctx.fillStyle = blueGlow;
+    ctx.fillRect(0, 0, width, height);
+    const violetGlow = ctx.createRadialGradient(680, 610, 0, 680, 610, 520);
+    violetGlow.addColorStop(0, 'rgba(139, 92, 246, 0.20)');
+    violetGlow.addColorStop(1, 'rgba(139, 92, 246, 0)');
+    ctx.fillStyle = violetGlow;
     ctx.fillRect(0, 0, width, height);
 
     let coverImage = null;
@@ -94,11 +106,12 @@ class ImageGenerator {
       ctx.fillStyle = '#1f2937';
       ctx.fillRect(coverX, 0, coverWidth, height);
     }
-    const coverShade = ctx.createLinearGradient(coverX - 130, 0, coverX + 100, 0);
-    coverShade.addColorStop(0, backgroundColor);
+    const coverShade = ctx.createLinearGradient(coverX - 170, 0, coverX + 130, 0);
+    coverShade.addColorStop(0, '#111827');
+    coverShade.addColorStop(0.42, 'rgba(17, 24, 39, 0.92)');
     coverShade.addColorStop(1, 'rgba(17, 24, 39, 0)');
     ctx.fillStyle = coverShade;
-    ctx.fillRect(coverX - 130, 0, 230, height);
+    ctx.fillRect(coverX - 170, 0, 300, height);
 
     const logo = await this.loadLogo();
     const logoSize = 74;

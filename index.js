@@ -793,12 +793,12 @@ async function run() {
       shortDescription: t?.shortDescription,
     };
 
-    // Тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"; в течение дня сообщение обновляем при новых главах
+    // Для каждого тайтла держим одно сообщение в сутки и обновляем его при
+    // выходе следующих глав — канал не получает дубли одного тайтла.
     const isNewTitleOnSite =
       isTitleCreatedToday(t?.createdAt) && config.notifyNewTitles;
 
     if (
-      isNewTitleOnSite &&
       existing &&
       existing.date === today &&
       existing.messageId &&
