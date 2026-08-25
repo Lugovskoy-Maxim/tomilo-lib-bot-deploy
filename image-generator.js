@@ -99,19 +99,13 @@ class ImageGenerator {
     }
 
     // Обложка тайтла занимает правую часть, без искажения пропорций.
-    const coverX = 760;
-    const coverWidth = 440;
-    if (coverImage) this.drawCoverCrop(ctx, coverImage, coverX, 0, coverWidth, height);
+    const coverX = 560;
+    const coverWidth = width - coverX;
+    if (coverImage) this.drawFadedCover(ctx, coverImage, coverX, 0, coverWidth, height);
     else {
       ctx.fillStyle = '#1f2937';
       ctx.fillRect(coverX, 0, coverWidth, height);
     }
-    const coverShade = ctx.createLinearGradient(coverX - 170, 0, coverX + 130, 0);
-    coverShade.addColorStop(0, '#111827');
-    coverShade.addColorStop(0.42, 'rgba(17, 24, 39, 0.92)');
-    coverShade.addColorStop(1, 'rgba(17, 24, 39, 0)');
-    ctx.fillStyle = coverShade;
-    ctx.fillRect(coverX - 170, 0, 300, height);
 
     const logo = await this.loadLogo();
     const logoSize = 74;
@@ -188,6 +182,23 @@ class ImageGenerator {
       sy = (image.height - sh) / 2;
     }
     ctx.drawImage(image, sx, sy, sw, sh, x, y, width, height);
+  }
+
+  /** Рисует обложку справа с настоящим альфа-переходом в фон, без жёсткого края. */
+  drawFadedCover(ctx, image, x, y, width, height) {
+    const layer = createCanvas(width, height);
+    const layerCtx = layer.getContext('2d');
+    this.drawCoverCrop(layerCtx, image, 0, 0, width, height);
+
+    const mask = layerCtx.createLinearGradient(0, 0, width, 0);
+    mask.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    mask.addColorStop(0.42, 'rgba(255, 255, 255, 0.12)');
+    mask.addColorStop(0.64, 'rgba(255, 255, 255, 1)');
+    mask.addColorStop(1, 'rgba(255, 255, 255, 1)');
+    layerCtx.globalCompositeOperation = 'destination-in';
+    layerCtx.fillStyle = mask;
+    layerCtx.fillRect(0, 0, width, height);
+    ctx.drawImage(layer, x, y);
   }
 
   drawWrappedText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
