@@ -25,10 +25,6 @@ services:
       - SETGID
     devices:
       - /dev/net/tun:/dev/net/tun
-    # wg-quick требует это значение при full-tunnel маршрутизации IPv4.
-    # Docker применяет sysctl при создании network namespace до запуска бота.
-    sysctls:
-      net.ipv4.conf.all.src_valid_mark: "1"
     pids_limit: 80
     mem_limit: 192m
     cpus: 0.50

@@ -24,6 +24,7 @@ RUN apt-get update \
     && mkdir -p /data /etc/wireguard
 COPY --from=build /app/node_modules ./node_modules
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chmod=755 docker-sysctl.sh /usr/local/bin/sysctl
 COPY . .
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "index.js"]
