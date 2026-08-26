@@ -819,10 +819,15 @@ async function run() {
   let maxSeen = lastProcessed;
   let maxNotified = lastProcessed;
 
+  // После чистой установки или утраты тома API отдаёт уже опубликованные
+  // обновления. Считаем их исходной точкой, а не новыми сообщениями.
+  const isFirstUpdatesScan = lastProcessed == null;
+
   for (const row of updates) {
     const activityTime = row.lastUpdate ? new Date(row.lastUpdate).getTime() : 0;
     if (!Number.isFinite(activityTime) || activityTime <= 0) continue;
     if (activityTime > 0) maxSeen = Math.max(maxSeen || 0, activityTime);
+    if (isFirstUpdatesScan) continue;
     if (lastProcessed != null && activityTime <= lastProcessed) continue;
 
     const numsRaw =
@@ -883,6 +888,20 @@ async function run() {
       updateHighlight: highlight,
       newChapters,
     });
+  }
+
+  if (isFirstUpdatesScan) {
+    const baseline = maxSeen > 0 ? new Date(maxSeen).toISOString() : undefined;
+    saveState(config.statePath, {
+      ...state,
+      lastProcessedReleaseDate: baseline,
+    });
+    console.log(
+      baseline
+        ? `Updates baseline initialized at ${baseline}; historical chapters skipped`
+        : "Updates baseline initialized; no chapter updates found",
+    );
+    return;
   }
 
   // API может вернуть несколько строк одного тайтла после ночной паузы.
