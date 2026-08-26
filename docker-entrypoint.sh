@@ -23,7 +23,12 @@ if [ "${WG_ENABLED:-false}" = "true" ] || [ "${WG_ENABLED:-false}" = "1" ]; then
   # Resolve them before wg-quick replaces the default route.
   wg_default_gateway=$(ip route show default | awk '/default/ { print $3; exit }')
   wg_default_device=$(ip route show default | awk '/default/ { print $5; exit }')
-  for wg_bypass_host in ${WG_BYPASS_HOSTS:-}; do
+  # Базовые домены бота всегда идут напрямую: иначе full-tunnel VPN может
+  # оставить API и CDN с обложками недоступными. Пользовательские домены
+  # добавляются через WG_BYPASS_HOSTS.
+  for wg_bypass_host in \
+    tomilo-lib.ru cdn.tomilo-lib.ru s3.regru.cloud tomilolib.s3.regru.cloud \
+    ${WG_BYPASS_HOSTS:-}; do
     wg_bypass_ips="$wg_bypass_ips $(getent ahostsv4 "$wg_bypass_host" | awk '{ print $1 }' | sort -u)"
   done
 
