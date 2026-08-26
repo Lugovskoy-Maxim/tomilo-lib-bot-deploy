@@ -14,7 +14,7 @@ class ImageGenerator {
       primaryColor: '#60a5fa',
       secondaryColor: '#f8fafc',
       accentColor: '#a78bfa',
-      fontFamily: 'Arial',
+      fontFamily: 'Exo 2',
       logoPath: options.logoPath,
       logoUrl: options.logoUrl || 'https://tomilo-lib.ru/favicons/favicon-512x512.png',
       siteName: options.siteName || 'Tomilo Lib',
@@ -31,19 +31,14 @@ class ImageGenerator {
    */
   registerAvailableFonts() {
     const fontPaths = [
-      path.join(__dirname, 'fonts', 'Roboto-Bold.ttf'),
-      path.join(__dirname, 'fonts', 'Roboto-Regular.ttf'),
-      path.join(__dirname, 'fonts', 'Arial.ttf'),
+      path.join(__dirname, 'fonts', 'Exo2[wght].ttf'),
     ];
 
     fontPaths.forEach(fontPath => {
       if (fs.existsSync(fontPath)) {
         try {
-          const fontName = path.basename(fontPath, '.ttf');
-          registerFont(fontPath, { family: fontName });
-          if (fontName.includes('Roboto')) {
-            this.options.fontFamily = fontName;
-          }
+          registerFont(fontPath, { family: 'Exo 2' });
+          this.options.fontFamily = 'Exo 2';
         } catch (err) {
           console.warn(`Не удалось зарегистрировать шрифт ${fontPath}:`, err.message);
         }
@@ -108,7 +103,7 @@ class ImageGenerator {
       fallbackGradient.addColorStop(1, '#312e81');
       ctx.fillStyle = fallbackGradient;
       ctx.fillRect(coverX, 0, coverWidth, height);
-      ctx.font = `bold 180px ${fontFamily}`;
+      ctx.font = `700 180px "${fontFamily}"`;
       ctx.fillStyle = 'rgba(248, 250, 252, 0.10)';
       ctx.textAlign = 'center';
       ctx.fillText('TL', coverX + coverWidth * 0.62, height * 0.58);
@@ -118,36 +113,73 @@ class ImageGenerator {
     const logo = await this.loadLogo();
     const logoSize = 74;
     if (logo) ctx.drawImage(logo, 54, 46, logoSize, logoSize);
-    ctx.font = `bold 28px ${fontFamily}`;
+    ctx.font = `600 30px "${fontFamily}"`;
     ctx.fillStyle = secondaryColor;
-    ctx.fillText(this.options.siteName, 148, 92);
+    this.drawTextShadow(ctx, this.options.siteName, 148, 92, 'rgba(2, 6, 23, 0.30)', 4);
 
-    ctx.fillStyle = 'rgba(248, 250, 252, 0.68)';
-    ctx.font = `bold 23px ${fontFamily}`;
+    ctx.fillStyle = 'rgba(226, 232, 240, 0.78)';
+    ctx.font = `700 21px "${fontFamily}"`;
     ctx.fillText('НОВАЯ ГЛАВА', 58, 205);
+    ctx.fillStyle = 'rgba(167, 139, 250, 0.88)';
+    ctx.fillRect(58, 220, 68, 4);
 
     ctx.textAlign = 'left';
-    ctx.font = `bold 52px ${fontFamily}`;
-    ctx.fillStyle = 'rgba(248, 250, 252, 0.88)';
-    const titleBottom = this.drawWrappedText(ctx, titleInfo.name || 'Без названия', 58, 282, 630, 62, 3);
+    ctx.font = `700 54px "${fontFamily}"`;
+    ctx.fillStyle = '#f8fafc';
+    ctx.shadowColor = 'rgba(2, 6, 23, 0.45)';
+    ctx.shadowBlur = 9;
+    ctx.shadowOffsetY = 3;
+    const titleBottom = this.drawWrappedText(ctx, titleInfo.name || 'Без названия', 58, 286, 600, 64, 3);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
 
     const chapterNumber = titleInfo.chapterNumber ?? titleInfo.latestChapter ?? titleInfo.chapter;
     const chapterLabel = chapterNumber != null ? `Глава ${chapterNumber}` : 'Новая глава';
-    ctx.font = `bold 58px ${fontFamily}`;
-    ctx.fillStyle = 'rgba(167, 139, 250, 0.72)';
-    ctx.fillText(chapterLabel, 58, Math.min(titleBottom + 88, 560));
+    const chapterY = Math.min(titleBottom + 100, 548);
+    ctx.font = `700 50px "${fontFamily}"`;
+    const chapterWidth = ctx.measureText(chapterLabel).width + 48;
+    this.drawRoundedRect(ctx, 42, chapterY - 56, chapterWidth, 72, 18);
+    ctx.fillStyle = 'rgba(139, 92, 246, 0.22)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(196, 181, 253, 0.42)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#c4b5fd';
+    this.drawTextShadow(ctx, chapterLabel, 66, chapterY, 'rgba(2, 6, 23, 0.42)', 5);
 
     const meta = [
       titleInfo.type ? this.translateType(titleInfo.type) : '',
       titleInfo.releaseYear ? String(titleInfo.releaseYear) : '',
     ].filter(Boolean).join(' · ');
     if (meta) {
-      ctx.font = `22px ${fontFamily}`;
+      ctx.font = `500 22px "${fontFamily}"`;
       ctx.fillStyle = 'rgba(248, 250, 252, 0.62)';
       ctx.fillText(meta, 58, 592);
     }
 
     return canvas.toBuffer('image/jpeg', { quality: 0.9 });
+  }
+
+  drawTextShadow(ctx, text, x, y, color, blur) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = blur;
+    ctx.shadowOffsetY = 2;
+    ctx.fillText(text, x, y);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+  }
+
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + width, y, x + width, y + height, r);
+    ctx.arcTo(x + width, y + height, x, y + height, r);
+    ctx.arcTo(x, y + height, x, y, r);
+    ctx.arcTo(x, y, x + width, y, r);
+    ctx.closePath();
   }
 
   async loadSourceImage(source) {
