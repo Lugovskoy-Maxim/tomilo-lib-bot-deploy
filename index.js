@@ -1,5 +1,7 @@
 process.env.NTBA_FIX_350 = true; // убирает DeprecationWarning при отправке Buffer
 const TelegramBot = require("node-telegram-bot-api");
+const fs = require("fs");
+const path = require("path");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
 const { runPersonalNotifications } = require("./personal-notifications");
@@ -720,6 +722,34 @@ async function fetchImageBufferFromUrls(urls, timeoutMs = 15000) {
   return null;
 }
 
+function coverCachePath(titleSlug, titleName, chapterNumber) {
+  const safeTitle = String(titleSlug || titleName || "title")
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё_-]+/gi, "-")
+    .replace(/^-+|-+$/g, "") || "title";
+  return path.join(config.coverCacheDir, `${safeTitle}-${Number(chapterNumber) || "latest"}.jpg`);
+}
+
+function readCachedCover(titleSlug, titleName, chapterNumber) {
+  try {
+    const cachePath = coverCachePath(titleSlug, titleName, chapterNumber);
+    return fs.existsSync(cachePath) ? fs.readFileSync(cachePath) : null;
+  } catch (error) {
+    if (DEBUG) console.warn("Cover cache read failed:", error.message);
+    return null;
+  }
+}
+
+function saveCachedCover(titleSlug, titleName, chapterNumber, image) {
+  if (!Buffer.isBuffer(image)) return;
+  try {
+    fs.mkdirSync(config.coverCacheDir, { recursive: true });
+    fs.writeFileSync(coverCachePath(titleSlug, titleName, chapterNumber), image);
+  } catch (error) {
+    console.warn("Cover cache save failed:", error.message);
+  }
+}
+
 /**
  * Лента как на сайте: lastUpdate учитывает freeAt (открытие всем) и премиум (updatedAt до freeAt),
  * плюс updateHighlight — см. GET /titles/latest-updates на сервере.
@@ -753,6 +783,45 @@ async function fetchTitleBySlug(slug) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Ночью Telegram не получает сообщений, но заранее готовим небольшую очередь
+ * карточек. Файлы лежат в persistent volume и будут использованы утром даже
+ * при недоступном в тот момент CDN обложек.
+ */
+async function prewarmQuietHoursCovers() {
+  if (!config.useEnhancedCovers) return;
+  const updates = await fetchLatestUpdatesTitles();
+  let prepared = 0;
+  for (const row of updates) {
+    if (prepared >= config.maxPublicNotificationsPerRun) break;
+    const numbers = (Array.isArray(row.chapters) && row.chapters.length
+      ? row.chapters
+      : [row.chapterNumber])
+      .map(Number)
+      .filter((number) => Number.isFinite(number) && number > 0);
+    const chapterNumber = numbers.length ? Math.max(...numbers) : null;
+    const titleName = row.title || "Без названия";
+    if (!chapterNumber || readCachedCover(row.slug, titleName, chapterNumber)) continue;
+
+    const fullTitle = row.slug ? await fetchTitleBySlug(row.slug) : null;
+    const title = fullTitle || { name: titleName, coverImage: row.cover };
+    const source = await fetchImageBufferFromUrls(getImageUrls(title));
+    try {
+      const card = await postImageGenerator.generateTitleCover({
+        ...title,
+        name: titleName,
+        coverImage: source,
+        chapterNumber,
+      });
+      saveCachedCover(row.slug, titleName, chapterNumber, card);
+      prepared += 1;
+    } catch (error) {
+      console.warn(`Quiet-hours cover generation failed (${titleName}):`, error.message);
+    }
+  }
+  if (prepared > 0) console.log(`Prepared ${prepared} cover card(s) during quiet hours`);
 }
 
 /** Лидерборд: топ тайтлов по рейтингу или просмотрам. Возвращает [{ slug, name, position, value }]. */
@@ -1027,8 +1096,13 @@ async function run() {
       const imageUrls = getImageUrls(titleForCover);
       if (DEBUG && imageUrls.length > 0)
         console.log("Image URLs:", imageUrls[0].slice(0, 80) + "…");
-      let photoPayload = null;
-      if (imageUrls.length > 0) {
+      const latestChapterNumber = chaptersToShow[chaptersToShow.length - 1]?.chapterNumber;
+      const cachedPhoto = config.useEnhancedCovers
+        ? readCachedCover(titleSlug, titleName, latestChapterNumber)
+        : null;
+      let photoPayload = cachedPhoto;
+      if (photoPayload && DEBUG) console.log(`Using cached cover: ${titleName} ch.${latestChapterNumber}`);
+      if (!photoPayload && imageUrls.length > 0) {
         photoPayload = await fetchImageBufferFromUrls(imageUrls);
         if (photoPayload) {
           if (DEBUG)
@@ -1048,14 +1122,15 @@ async function run() {
       }
       // Даже если исходная обложка недоступна, отправляем фирменную карточку,
       // а не текст без изображения.
-      if (config.useEnhancedCovers) {
+      if (config.useEnhancedCovers && !cachedPhoto) {
         try {
           photoPayload = await postImageGenerator.generateTitleCover({
             ...finalTitleInfo,
             name: titleName,
             coverImage: photoPayload,
-            chapterNumber: chaptersToShow[chaptersToShow.length - 1]?.chapterNumber,
+            chapterNumber: latestChapterNumber,
           });
+          saveCachedCover(titleSlug, titleName, latestChapterNumber, photoPayload);
         } catch (coverError) {
           console.warn("Enhanced cover generation failed; sending original:", coverError.message);
         }
@@ -1085,11 +1160,40 @@ async function run() {
       if (isEdit && existing) {
         try {
           if (existing.hasPhoto) {
-            await bot.editMessageCaption(text, {
-              chat_id: config.telegramChatId,
-              message_id: existing.messageId,
-              ...opts,
-            });
+            if (photoPayload) {
+              try {
+                await waitForMessageSlot();
+                await bot.editMessageMedia(
+                  {
+                    type: "photo",
+                    media: photoPayload,
+                    caption: text,
+                    parse_mode: "HTML",
+                  },
+                  {
+                    chat_id: config.telegramChatId,
+                    message_id: existing.messageId,
+                    reply_markup: opts.reply_markup,
+                  },
+                  { filename: "cover.jpg", contentType: "image/jpeg" },
+                );
+              } catch (mediaError) {
+                // Если Telegram временно не принимает замену медиа, всё равно
+                // обновляем текст и не создаём второй пост.
+                console.warn("Cover update failed; updating caption only:", mediaError.message);
+                await bot.editMessageCaption(text, {
+                  chat_id: config.telegramChatId,
+                  message_id: existing.messageId,
+                  ...opts,
+                });
+              }
+            } else {
+              await bot.editMessageCaption(text, {
+                chat_id: config.telegramChatId,
+                message_id: existing.messageId,
+                ...opts,
+              });
+            }
             state.titleMessages[key] = {
               messageId: existing.messageId,
               chatId: config.telegramChatId,
@@ -1416,6 +1520,11 @@ async function loop() {
       timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit',
     });
     console.log(`Quiet hours (Moscow): notifications paused until ${wakeAt}`);
+    try {
+      await prewarmQuietHoursCovers();
+    } catch (error) {
+      console.warn("Quiet-hours cover preparation failed:", error.message);
+    }
     setTimeout(loop, quietDelay);
     return;
   }

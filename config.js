@@ -70,6 +70,7 @@ module.exports = {
   donateUrl: (process.env.DONATE_URL || '').trim(),
   donateUrlTbank: (process.env.DONATE_URL_TBANK || '').trim(),
   statePath: process.env.STATE_PATH || '.bot-state.json',
+  coverCacheDir: process.env.COVER_CACHE_DIR || '/data/cover-cache',
 
   // --- Оповещения (вкл/выкл в конфиге) ---
   /** Оповещения о новых главах в канал */
