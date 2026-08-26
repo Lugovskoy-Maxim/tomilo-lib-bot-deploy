@@ -29,13 +29,28 @@ if [ "${WG_ENABLED:-false}" = "true" ] || [ "${WG_ENABLED:-false}" = "1" ]; then
   # Resolve them before wg-quick replaces the default route.
   wg_default_gateway=$(ip route show default | awk '/default/ { print $3; exit }')
   wg_default_device=$(ip route show default | awk '/default/ { print $5; exit }')
-  # Базовые домены бота всегда идут напрямую: иначе full-tunnel VPN может
-  # оставить API и CDN с обложками недоступными. Пользовательские домены
-  # добавляются через WG_BYPASS_HOSTS.
+  # API сайта идёт напрямую. S3 с обложками, напротив, доступен на этом VPS
+  # только через WireGuard, поэтому его IP закрепляем до смены DNS, но маршрут
+  # через VPN не исключаем.
   for wg_bypass_host in \
-    tomilo-lib.ru cdn.tomilo-lib.ru s3.regru.cloud tomilolib.s3.regru.cloud \
+    tomilo-lib.ru cdn.tomilo-lib.ru \
     ${WG_BYPASS_HOSTS:-}; do
+    case "$wg_bypass_host" in
+      s3.regru.cloud|tomilolib.s3.regru.cloud)
+        # Не даём пользовательскому старому списку случайно вывести S3 из VPN.
+        continue
+        ;;
+    esac
     wg_bypass_ips="$wg_bypass_ips $(getent ahostsv4 "$wg_bypass_host" | awk '{ print $1 }' | sort -u)"
+  done
+
+  for wg_s3_host in s3.regru.cloud tomilolib.s3.regru.cloud; do
+    for wg_s3_ip in $(getent ahostsv4 "$wg_s3_host" | awk '{ print $1 }' | sort -u); do
+      # TLS продолжает видеть исходное имя хоста, а Node не делает DNS-запрос
+      # через VPN, где для S3 на данном сервере приходит EAI_AGAIN.
+      echo "$wg_s3_ip $wg_s3_host" >> /etc/hosts
+      echo "Routing $wg_s3_host through WireGuard ($wg_s3_ip)"
+    done
   done
 
   echo "Starting WireGuard inside this container…"
