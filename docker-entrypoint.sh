@@ -7,6 +7,12 @@ wg_default_gateway=""
 wg_default_device=""
 wg_bypass_ips=""
 
+# Named volume создаётся Docker от root. Бот работает от node, поэтому выдаём
+# ему доступ до запуска приложения; это сохраняет state и защиту от дублей.
+if [ "$(id -u)" = "0" ] && [ -d /data ]; then
+  chown -R node:node /data
+fi
+
 stop() {
   if [ "$wg_started" = "1" ]; then
     echo "Stopping WireGuard…"

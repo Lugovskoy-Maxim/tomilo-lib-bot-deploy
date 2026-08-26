@@ -25,6 +25,8 @@ services:
       # Нужны entrypoint только для перехода root → node после запуска WireGuard.
       - SETUID
       - SETGID
+      # Нужна только entrypoint для выдачи доступа к persistent volume пользователю node.
+      - CHOWN
     devices:
       - /dev/net/tun:/dev/net/tun
     pids_limit: 80
