@@ -403,13 +403,6 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const metaParts = [typeStr, yearStr, statusStr].filter(Boolean);
   const metaLine = metaParts.length ? `<i>${metaParts.join(" · ")}</i>` : "";
 
-  const genres = Array.isArray(titleInfo.genres) ? titleInfo.genres : [];
-  const genreStr = genres
-    .slice(0, 3)
-    .map((g) => escapeHtml(String(g).trim()))
-    .filter(Boolean)
-    .join(", ");
-
   let descLine = "";
   if (isNewTitleOnSite) {
     const rawDesc = titleInfo.description || titleInfo.shortDescription || "";
@@ -451,7 +444,6 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
     ...(accessHint ? [accessHint] : []),
     ...(milestoneLine ? [milestoneLine] : []),
     ...(metaLine ? [metaLine] : []),
-    ...(genreStr ? [genreStr] : []),
     ...(isNewTitleOnSite && descLine ? [descLine] : []),
   ].filter((line) => line !== undefined && line !== null);
   return lines.join("\n");
