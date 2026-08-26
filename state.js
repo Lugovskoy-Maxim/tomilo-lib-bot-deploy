@@ -19,6 +19,8 @@ function loadState(statePath) {
       // Точные отпечатки опубликованных уведомлений: «тайтл + глава».
       // Нужны как вторая линия защиты, если API повторно отдаёт старую запись.
       sentChapterEvents: data.sentChapterEvents && typeof data.sentChapterEvents === 'object' ? data.sentChapterEvents : {},
+      // Тайтлы, для которых уже публиковался первичный анонс импорта.
+      announcedTitleImports: data.announcedTitleImports && typeof data.announcedTitleImports === 'object' ? data.announcedTitleImports : {},
       // Для "просмотров за день": дата и снимок просмотров по slug (для следующего расчёта дельты)
       lastViewsDate: data.lastViewsDate || null,
       lastViewsBySlug: data.lastViewsBySlug && typeof data.lastViewsBySlug === 'object' ? data.lastViewsBySlug : {},
@@ -36,6 +38,7 @@ function loadState(statePath) {
       notifiedMilestones: {},
       notifiedChapters: {},
       sentChapterEvents: {},
+      announcedTitleImports: {},
       lastViewsDate: null,
       lastViewsBySlug: {},
       dailyPromotions: {},
@@ -62,6 +65,7 @@ function saveState(statePath, state) {
     notifiedMilestones: state.notifiedMilestones,
     notifiedChapters: state.notifiedChapters,
     sentChapterEvents: state.sentChapterEvents,
+    announcedTitleImports: state.announcedTitleImports,
     lastViewsDate: state.lastViewsDate,
     lastViewsBySlug: state.lastViewsBySlug,
     dailyPromotions: state.dailyPromotions,

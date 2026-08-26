@@ -607,12 +607,17 @@ function recordAndPersistChapterNotifications(
   const titleKey = titleSlug || titleName;
   recordNotifiedChapters(state, titleKey, chapterNumbers);
   if (!state.sentChapterEvents) state.sentChapterEvents = {};
+  if (!state.announcedTitleImports) state.announcedTitleImports = {};
   const sentAt = new Date().toISOString();
   for (const chapterNumber of chapterNumbers) {
     state.sentChapterEvents[
       chapterNotificationKey(titleSlug, titleName, chapterNumber)
     ] = sentAt;
   }
+  // Одна отметка на тайтл закрывает повторные «Новый тайтл на сайте» при
+  // повторной выдаче API всего импортированного диапазона глав.
+  if (!state.announcedTitleImports) state.announcedTitleImports = {};
+  state.announcedTitleImports[titleKey] = sentAt;
   saveState(config.statePath, state);
 }
 
@@ -1065,7 +1070,9 @@ async function run() {
     // Для каждого тайтла держим одно сообщение в сутки и обновляем его при
     // выходе следующих глав — канал не получает дубли одного тайтла.
     const isNewTitleOnSite =
-      isTitleCreatedToday(t?.createdAt) && config.notifyNewTitles;
+      isTitleCreatedToday(t?.createdAt) &&
+      config.notifyNewTitles &&
+      !state.announcedTitleImports[key];
 
     if (
       existing &&
