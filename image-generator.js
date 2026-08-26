@@ -240,8 +240,9 @@ class ImageGenerator {
 
     const mask = layerCtx.createLinearGradient(0, 0, width, 0);
     mask.addColorStop(0, 'rgba(255, 255, 255, 0)');
-    mask.addColorStop(0.42, 'rgba(255, 255, 255, 0.12)');
-    mask.addColorStop(0.64, 'rgba(255, 255, 255, 1)');
+    // Узкий мягкий переход: не перекрываем заметную часть самой обложки.
+    mask.addColorStop(0.28, 'rgba(255, 255, 255, 0.08)');
+    mask.addColorStop(0.50, 'rgba(255, 255, 255, 1)');
     mask.addColorStop(1, 'rgba(255, 255, 255, 1)');
     layerCtx.globalCompositeOperation = 'destination-in';
     layerCtx.fillStyle = mask;
