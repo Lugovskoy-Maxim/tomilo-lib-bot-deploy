@@ -23,6 +23,7 @@ function loadState(statePath) {
       lastViewsDate: data.lastViewsDate || null,
       lastViewsBySlug: data.lastViewsBySlug && typeof data.lastViewsBySlug === 'object' ? data.lastViewsBySlug : {},
       dailyPromotions: data.dailyPromotions && typeof data.dailyPromotions === 'object' ? data.dailyPromotions : {},
+      supportPromoLastSentAt: Number(data.supportPromoLastSentAt) || 0,
       promotionsPauseUntil: Number(data.promotionsPauseUntil) || 0,
     };
   } catch (e) {
@@ -38,6 +39,7 @@ function loadState(statePath) {
       lastViewsDate: null,
       lastViewsBySlug: {},
       dailyPromotions: {},
+      supportPromoLastSentAt: 0,
       promotionsPauseUntil: 0,
     };
   }
@@ -63,6 +65,7 @@ function saveState(statePath, state) {
     lastViewsDate: state.lastViewsDate,
     lastViewsBySlug: state.lastViewsBySlug,
     dailyPromotions: state.dailyPromotions,
+    supportPromoLastSentAt: state.supportPromoLastSentAt,
     promotionsPauseUntil: state.promotionsPauseUntil,
   };
   // Запись через rename не оставит повреждённый JSON при рестарте контейнера

@@ -9,9 +9,11 @@ Telegram-бот для уведомлений о новых главах, тай
 `QUIET_HOURS_END`, `MESSAGE_COOLDOWN_MS`, `MAX_PUBLIC_NOTIFICATIONS_PER_RUN`
 и `MAX_PERSONAL_NOTIFICATIONS_PER_RUN`.
 
-Также бот один раз в московские сутки размещает два отдельных поста: о
-приложении для Android (RuStore и GitHub Releases) и о поддержке проекта.
-Параметры `NOTIFY_DAILY_APP_PROMO` и `NOTIFY_DAILY_SUPPORT` включают их,
+Также бот один раз в московские сутки размещает пост о приложении для Android
+(RuStore и GitHub Releases). Пост о поддержке проекта публикуется не чаще
+одного раза в четыре часа. Параметры `NOTIFY_DAILY_APP_PROMO` и
+`NOTIFY_DAILY_SUPPORT` включают их, а `SUPPORT_PROMO_INTERVAL_MINUTES`
+задаёт интервал поддержки (минимум 240 минут),
 а `DONATE_URL` и `DONATE_URL_TBANK` задают способы поддержки. Публикация
 подчиняется тихим часам и общей очереди сообщений.
 После этих ежедневных постов бот делает паузу для всех новых уведомлений;

@@ -199,7 +199,11 @@ async function runDailyPromotions(state) {
   if (config.donateUrlTbank && /^https?:\/\//i.test(config.donateUrlTbank)) {
     supportButtons.push({ text: 'Поддержать через Т-Банк ↗', url: config.donateUrlTbank });
   }
-  if (config.notifyDailySupport && supportButtons.length > 0 && state.dailyPromotions.support !== today) {
+  const supportWaitMs = Math.max(
+    0,
+    Number(state.supportPromoLastSentAt || 0) + config.supportPromoIntervalMs - Date.now(),
+  );
+  if (config.notifyDailySupport && supportButtons.length > 0 && supportWaitMs === 0) {
     const text = [
       '<b>💙 Поддержите Tomilo Lib</b>', '',
       'Ваша поддержка помогает развивать библиотеку, добавлять тайтлы и улучшать приложение.',
@@ -211,9 +215,12 @@ async function runDailyPromotions(state) {
       parse_mode: 'HTML',
       ...dailyPromoButtons(supportButtons),
     });
-    state.dailyPromotions.support = today;
+    // Храним timestamp, а не только дату: следующая просьба о поддержке
+    // допустима строго спустя четыре часа после этой отправки.
+    state.supportPromoLastSentAt = Date.now();
+    saveState(config.statePath, state);
     sentAny = true;
-    console.log('Posted daily support promo');
+    console.log(`Posted support promo; next allowed in ${Math.round(config.supportPromoIntervalMs / 3_600_000)} h`);
   }
   if (sentAny) {
     state.promotionsPauseUntil = Date.now() + config.dailyPromotionPauseMs;

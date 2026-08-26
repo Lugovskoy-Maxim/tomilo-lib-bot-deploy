@@ -57,6 +57,13 @@ module.exports = {
   maxPersonalNotificationsPerRun: parseBoundedInt(process.env.MAX_PERSONAL_NOTIFICATIONS_PER_RUN, 5, 1, 20),
   notifyDailyAppPromo: parseBool(process.env.NOTIFY_DAILY_APP_PROMO, true),
   notifyDailySupport: parseBool(process.env.NOTIFY_DAILY_SUPPORT, true),
+  /** Пост поддержки — не чаще одного раза за указанный интервал (минимум 4 часа). */
+  supportPromoIntervalMs: parseBoundedInt(
+    process.env.SUPPORT_PROMO_INTERVAL_MINUTES,
+    240,
+    240,
+    1440,
+  ) * 60_000,
   dailyPromotionPauseMs: parseBoundedInt(process.env.DAILY_PROMOTION_PAUSE_MINUTES, 20, 1, 180) * 60_000,
   rustoreUrl: process.env.RUSTORE_URL || 'https://www.rustore.ru/catalog/app/ru.tomilo.lib.mobile',
   githubReleasesUrl: process.env.GITHUB_RELEASES_URL || 'https://github.com/Lugovskoy-Maxim/tomilo-lib-android/releases',
