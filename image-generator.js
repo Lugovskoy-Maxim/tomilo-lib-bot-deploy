@@ -99,15 +99,23 @@ class ImageGenerator {
     if (coverImage) this.drawFadedCover(ctx, coverImage, coverX, 0, coverWidth, height);
     else {
       const fallbackGradient = ctx.createLinearGradient(coverX, 0, width, height);
-      fallbackGradient.addColorStop(0, '#172554');
-      fallbackGradient.addColorStop(1, '#312e81');
+      fallbackGradient.addColorStop(0, '#1e3a8a');
+      fallbackGradient.addColorStop(1, '#5b21b6');
       ctx.fillStyle = fallbackGradient;
       ctx.fillRect(coverX, 0, coverWidth, height);
-      ctx.font = `700 180px "${fontFamily}"`;
-      ctx.fillStyle = 'rgba(248, 250, 252, 0.10)';
-      ctx.textAlign = 'center';
-      ctx.fillText('TL', coverX + coverWidth * 0.62, height * 0.58);
-      ctx.textAlign = 'left';
+      const fallbackGlow = ctx.createRadialGradient(width * 0.8, height * 0.28, 0, width * 0.8, height * 0.28, 330);
+      fallbackGlow.addColorStop(0, 'rgba(196, 181, 253, 0.42)');
+      fallbackGlow.addColorStop(1, 'rgba(196, 181, 253, 0)');
+      ctx.fillStyle = fallbackGlow;
+      ctx.fillRect(coverX, 0, coverWidth, height);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.13)';
+      ctx.lineWidth = 2;
+      for (let offset = -height; offset < coverWidth; offset += 70) {
+        ctx.beginPath();
+        ctx.moveTo(coverX + offset, height);
+        ctx.lineTo(coverX + offset + height, 0);
+        ctx.stroke();
+      }
     }
 
     const logo = await this.loadLogo();

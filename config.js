@@ -70,7 +70,8 @@ module.exports = {
   donateUrl: (process.env.DONATE_URL || '').trim(),
   donateUrlTbank: (process.env.DONATE_URL_TBANK || '').trim(),
   statePath: process.env.STATE_PATH || '.bot-state.json',
-  coverCacheDir: process.env.COVER_CACHE_DIR || '/data/cover-cache',
+  // v2 не использует старые fallback-карточки с TL как кэш настоящей обложки.
+  coverCacheDir: process.env.COVER_CACHE_DIR || '/data/cover-cache-v2',
 
   // --- Оповещения (вкл/выкл в конфиге) ---
   /** Оповещения о новых главах в канал */

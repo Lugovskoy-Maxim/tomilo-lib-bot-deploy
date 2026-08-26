@@ -2,6 +2,7 @@ process.env.NTBA_FIX_350 = true; // убирает DeprecationWarning при о�
 const TelegramBot = require("node-telegram-bot-api");
 const fs = require("fs");
 const path = require("path");
+const dns = require("dns");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
 const { runPersonalNotifications } = require("./personal-notifications");
@@ -16,6 +17,10 @@ const postImageGenerator = new ImageGenerator({
 });
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
+
+// Маршруты-исключения WireGuard строятся для IPv4 CDN. Приоритет IPv4
+// исключает зависание fetch на IPv6-адресе, который VPN-провайдер не ведёт.
+dns.setDefaultResultOrder("ipv4first");
 
 // Telegram limits (practical): photo caption <= 1024 chars, message text <= 4096 chars.
 const TG_MAX_CAPTION_LEN = 1024;
@@ -815,8 +820,12 @@ async function prewarmQuietHoursCovers() {
         coverImage: source,
         chapterNumber,
       });
-      saveCachedCover(row.slug, titleName, chapterNumber, card);
-      prepared += 1;
+      // В кэш сохраняем только карточку с настоящей обложкой. Если CDN был
+      // временно недоступен, следующий запуск сможет повторить загрузку.
+      if (source) {
+        saveCachedCover(row.slug, titleName, chapterNumber, card);
+        prepared += 1;
+      }
     } catch (error) {
       console.warn(`Quiet-hours cover generation failed (${titleName}):`, error.message);
     }
@@ -1101,10 +1110,12 @@ async function run() {
         ? readCachedCover(titleSlug, titleName, latestChapterNumber)
         : null;
       let photoPayload = cachedPhoto;
+      let sourceCover = null;
       if (photoPayload && DEBUG) console.log(`Using cached cover: ${titleName} ch.${latestChapterNumber}`);
       if (!photoPayload && imageUrls.length > 0) {
-        photoPayload = await fetchImageBufferFromUrls(imageUrls);
-        if (photoPayload) {
+        sourceCover = await fetchImageBufferFromUrls(imageUrls);
+        photoPayload = sourceCover;
+        if (sourceCover) {
           if (DEBUG)
             console.log("Cover downloaded, size:", photoPayload.length);
         } else {
@@ -1130,7 +1141,9 @@ async function run() {
             coverImage: photoPayload,
             chapterNumber: latestChapterNumber,
           });
-          saveCachedCover(titleSlug, titleName, latestChapterNumber, photoPayload);
+          if (sourceCover) {
+            saveCachedCover(titleSlug, titleName, latestChapterNumber, photoPayload);
+          }
         } catch (coverError) {
           console.warn("Enhanced cover generation failed; sending original:", coverError.message);
         }
