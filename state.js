@@ -16,6 +16,9 @@ function loadState(statePath) {
       notifiedMilestones: data.notifiedMilestones && typeof data.notifiedMilestones === 'object' ? data.notifiedMilestones : {},
       // Уже отправленные в Telegram номера глав по slug (чтобы не дублировать старые из API)
       notifiedChapters: data.notifiedChapters && typeof data.notifiedChapters === 'object' ? data.notifiedChapters : {},
+      // Точные отпечатки опубликованных уведомлений: «тайтл + глава».
+      // Нужны как вторая линия защиты, если API повторно отдаёт старую запись.
+      sentChapterEvents: data.sentChapterEvents && typeof data.sentChapterEvents === 'object' ? data.sentChapterEvents : {},
       // Для "просмотров за день": дата и снимок просмотров по slug (для следующего расчёта дельты)
       lastViewsDate: data.lastViewsDate || null,
       lastViewsBySlug: data.lastViewsBySlug && typeof data.lastViewsBySlug === 'object' ? data.lastViewsBySlug : {},
@@ -31,6 +34,7 @@ function loadState(statePath) {
       lastLeaderboard: [],
       notifiedMilestones: {},
       notifiedChapters: {},
+      sentChapterEvents: {},
       lastViewsDate: null,
       lastViewsBySlug: {},
       dailyPromotions: {},
@@ -55,12 +59,17 @@ function saveState(statePath, state) {
     lastLeaderboard: state.lastLeaderboard,
     notifiedMilestones: state.notifiedMilestones,
     notifiedChapters: state.notifiedChapters,
+    sentChapterEvents: state.sentChapterEvents,
     lastViewsDate: state.lastViewsDate,
     lastViewsBySlug: state.lastViewsBySlug,
     dailyPromotions: state.dailyPromotions,
     promotionsPauseUntil: state.promotionsPauseUntil,
   };
-  fs.writeFileSync(statePath, JSON.stringify(toSave, null, 2), 'utf8');
+  // Запись через rename не оставит повреждённый JSON при рестарте контейнера
+  // ровно во время сохранения состояния.
+  const temporaryPath = `${statePath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(toSave, null, 2), 'utf8');
+  fs.renameSync(temporaryPath, statePath);
 }
 
 module.exports = { loadState, saveState };

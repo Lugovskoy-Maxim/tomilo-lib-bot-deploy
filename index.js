@@ -537,6 +537,45 @@ function recordNotifiedChapters(state, titleKey, chapterNumbers) {
     merged.length > 200 ? merged.slice(-200) : merged;
 }
 
+function normalizeTitleForNotification(titleSlug, titleName) {
+  const source = String(titleSlug || titleName || "");
+  return source.trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
+}
+
+function chapterNotificationKey(titleSlug, titleName, chapterNumber) {
+  return `${normalizeTitleForNotification(titleSlug, titleName)}#${Number(chapterNumber)}`;
+}
+
+function hasSentChapterEvent(state, titleSlug, titleName, chapterNumber) {
+  return Boolean(
+    state.sentChapterEvents?.[
+      chapterNotificationKey(titleSlug, titleName, chapterNumber)
+    ],
+  );
+}
+
+/**
+ * Фиксирует доставку немедленно, а не в конце всего прохода. Это закрывает
+ * окно, в котором контейнер мог быть перезапущен после Telegram send.
+ */
+function recordAndPersistChapterNotifications(
+  state,
+  titleSlug,
+  titleName,
+  chapterNumbers,
+) {
+  const titleKey = titleSlug || titleName;
+  recordNotifiedChapters(state, titleKey, chapterNumbers);
+  if (!state.sentChapterEvents) state.sentChapterEvents = {};
+  const sentAt = new Date().toISOString();
+  for (const chapterNumber of chapterNumbers) {
+    state.sentChapterEvents[
+      chapterNotificationKey(titleSlug, titleName, chapterNumber)
+    ] = sentAt;
+  }
+  saveState(config.statePath, state);
+}
+
 /**
  * API в latest-updates отдаёт несколько «недавних» глав тайтла разом (группировка на сервере).
  * Для премиум / went_free оставляем только реально новые номера; старые из пачки отбрасываем.
@@ -770,6 +809,7 @@ async function run() {
   if (!state.titleMessages) state.titleMessages = {};
   if (!state.maxTitleMessages) state.maxTitleMessages = {};
   if (!state.notifiedChapters) state.notifiedChapters = {};
+  if (!state.sentChapterEvents) state.sentChapterEvents = {};
 
   // ======== Обработка новых глав ========
   // Сообщения отправляем как обычно. Если тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"
@@ -803,6 +843,14 @@ async function run() {
       row,
       sortedNums,
       alreadyNotified,
+    ).filter(
+      (chapterNumber) =>
+        !hasSentChapterEvent(
+          state,
+          row.slug,
+          row.title,
+          chapterNumber,
+        ),
     );
     if (numsToNotify.length === 0) {
       if (activityTime > 0) maxNotified = Math.max(maxNotified || 0, activityTime);
@@ -990,6 +1038,24 @@ async function run() {
         parse_mode: "HTML",
         ...siteButton(config.siteUrl, titleSlug),
       };
+
+      // Последняя проверка перед запросом к Telegram. При любом повторе от API
+      // эта пара «тайтл + глава» уже не сможет уйти вторым сообщением.
+      const chaptersStillNew = newChapters.filter(
+        (chapter) =>
+          !hasSentChapterEvent(
+            state,
+            titleSlug,
+            titleName,
+            chapter.chapterNumber,
+          ),
+      );
+      if (chaptersStillNew.length === 0) {
+        console.log(`Skipped duplicate: ${titleName} ch.${newChapters.map((c) => c.chapterNumber).join(", ")}`);
+        if (groupMaxReleaseTime > 0)
+          maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
+        continue;
+      }
       if (isEdit && existing) {
         try {
           if (existing.hasPhoto) {
@@ -1013,9 +1079,10 @@ async function run() {
             }
             if (groupMaxReleaseTime > 0)
               maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-            recordNotifiedChapters(
+            recordAndPersistChapterNotifications(
               state,
-              keyCh,
+              titleSlug,
+              titleName,
               newChapters.map((c) => c.chapterNumber),
             );
             const chNums = chaptersToShow
@@ -1061,9 +1128,10 @@ async function run() {
               }
               if (groupMaxReleaseTime > 0)
                 maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-              recordNotifiedChapters(
+              recordAndPersistChapterNotifications(
                 state,
-                keyCh,
+                titleSlug,
+                titleName,
                 newChapters.map((c) => c.chapterNumber),
               );
               const chNums = chaptersToShow
@@ -1097,9 +1165,10 @@ async function run() {
           }
           if (groupMaxReleaseTime > 0)
             maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-          recordNotifiedChapters(
+          recordAndPersistChapterNotifications(
             state,
-            keyCh,
+            titleSlug,
+            titleName,
             newChapters.map((c) => c.chapterNumber),
           );
           const chNums = chaptersToShow.map((c) => c.chapterNumber).join(", ");
@@ -1143,9 +1212,10 @@ async function run() {
         }
         if (groupMaxReleaseTime > 0)
           maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-        recordNotifiedChapters(
+        recordAndPersistChapterNotifications(
           state,
-          keyCh,
+          titleSlug,
+          titleName,
           newChapters.map((c) => c.chapterNumber),
         );
         const chNums = chaptersToShow.map((c) => c.chapterNumber).join(", ");
@@ -1180,9 +1250,10 @@ async function run() {
             }
             if (groupMaxReleaseTime > 0)
               maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-            recordNotifiedChapters(
+            recordAndPersistChapterNotifications(
               state,
-              keyCh,
+              titleSlug,
+              titleName,
               newChapters.map((c) => c.chapterNumber),
             );
             console.log(
