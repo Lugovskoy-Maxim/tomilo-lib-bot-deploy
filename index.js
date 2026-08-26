@@ -25,6 +25,7 @@ dns.setDefaultResultOrder("ipv4first");
 // Telegram limits (practical): photo caption <= 1024 chars, message text <= 4096 chars.
 const TG_MAX_CAPTION_LEN = 1024;
 const TG_MAX_MESSAGE_LEN = 4096;
+const POST_REACTION_EMOJIS = ["✨", "🔥", "❤️", "👏", "😍", "🎉"];
 
 function clampText(s, maxLen) {
   if (!s) return "";
@@ -45,14 +46,43 @@ function looksLikeCaptionTooLongError(msg) {
   );
 }
 
+async function addRandomPostReaction(message) {
+  if (
+    !config.postReactionsEnabled ||
+    !message?.message_id ||
+    Math.random() * 100 < config.postReactionSkipPercent
+  ) {
+    return;
+  }
+  const emoji = POST_REACTION_EMOJIS[
+    Math.floor(Math.random() * POST_REACTION_EMOJIS.length)
+  ];
+  try {
+    // node-telegram-bot-api 0.67 ещё не предоставляет публичный метод для
+    // свежего API setMessageReaction, поэтому вызываем его штатный request.
+    await bot._request("setMessageReaction", {
+      form: {
+        chat_id: config.telegramChatId,
+        message_id: message.message_id,
+        reaction: JSON.stringify([{ type: "emoji", emoji }]),
+      },
+    });
+  } catch (error) {
+    // Реакция — необязательное украшение: публикация уже успешна.
+    if (DEBUG) console.warn("Post reaction failed:", error.message);
+  }
+}
+
 async function sendMessageSafe(text, opts) {
   const raw = String(text || "");
   if (raw.length <= TG_MAX_MESSAGE_LEN) {
     await waitForMessageSlot();
-    return bot.sendMessage(config.telegramChatId, raw, {
+    const result = await bot.sendMessage(config.telegramChatId, raw, {
       disable_web_page_preview: true,
       ...opts,
     });
+    await addRandomPostReaction(result);
+    return result;
   }
 
   // Если текст слишком длинный, лучше отправить как plain-text, чтобы не словить ошибки HTML entities.
@@ -63,10 +93,12 @@ async function sendMessageSafe(text, opts) {
       `Message too long (${raw.length}), sending plain-text truncated`,
     );
   await waitForMessageSlot();
-  return bot.sendMessage(config.telegramChatId, plain, {
+  const result = await bot.sendMessage(config.telegramChatId, plain, {
     disable_web_page_preview: true,
     ...rest,
   });
+  await addRandomPostReaction(result);
+  return result;
 }
 
 async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
@@ -84,12 +116,14 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
 
   try {
     await waitForMessageSlot();
-    return await bot.sendPhoto(
+    const result = await bot.sendPhoto(
       config.telegramChatId,
       photoPayload,
       { caption, ...opts },
       fileOpts,
     );
+    await addRandomPostReaction(result);
+    return result;
   } catch (e) {
     const msg =
       e && typeof e === "object" && "message" in e ? String(e.message) : "";

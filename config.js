@@ -65,6 +65,9 @@ module.exports = {
     1440,
   ) * 60_000,
   dailyPromotionPauseMs: parseBoundedInt(process.env.DAILY_PROMOTION_PAUSE_MINUTES, 20, 1, 180) * 60_000,
+  postReactionsEnabled: parseBool(process.env.POST_REACTIONS_ENABLED, true),
+  /** Небольшая доля постов остаётся без реакции, чтобы канал выглядел естественно. */
+  postReactionSkipPercent: parseBoundedInt(process.env.POST_REACTION_SKIP_PERCENT, 15, 0, 90),
   rustoreUrl: process.env.RUSTORE_URL || 'https://www.rustore.ru/catalog/app/ru.tomilo.lib.mobile',
   githubReleasesUrl: process.env.GITHUB_RELEASES_URL || 'https://github.com/Lugovskoy-Maxim/tomilo-lib-android/releases',
   donateUrl: (process.env.DONATE_URL || '').trim(),
