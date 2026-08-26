@@ -103,8 +103,16 @@ class ImageGenerator {
     const coverWidth = width - coverX;
     if (coverImage) this.drawFadedCover(ctx, coverImage, coverX, 0, coverWidth, height);
     else {
-      ctx.fillStyle = '#1f2937';
+      const fallbackGradient = ctx.createLinearGradient(coverX, 0, width, height);
+      fallbackGradient.addColorStop(0, '#172554');
+      fallbackGradient.addColorStop(1, '#312e81');
+      ctx.fillStyle = fallbackGradient;
       ctx.fillRect(coverX, 0, coverWidth, height);
+      ctx.font = `bold 180px ${fontFamily}`;
+      ctx.fillStyle = 'rgba(248, 250, 252, 0.10)';
+      ctx.textAlign = 'center';
+      ctx.fillText('TL', coverX + coverWidth * 0.62, height * 0.58);
+      ctx.textAlign = 'left';
     }
 
     const logo = await this.loadLogo();

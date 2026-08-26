@@ -575,6 +575,26 @@ function mergeChapters(existing, newChapters) {
   );
 }
 
+/** Склеивает повторяющиеся строки API в одно уведомление на тайтл. */
+function coalesceTitleBundles(bundles) {
+  const byTitle = new Map();
+  for (const bundle of bundles) {
+    const key = bundle.titleSlug || bundle.titleName;
+    const current = byTitle.get(key);
+    if (!current) {
+      byTitle.set(key, { ...bundle, newChapters: [...bundle.newChapters] });
+      continue;
+    }
+    current.newChapters = mergeChapters(current.newChapters, bundle.newChapters);
+    if (bundle.releaseTime >= current.releaseTime) {
+      current.releaseTime = bundle.releaseTime;
+      current.updateHighlight = bundle.updateHighlight;
+      if (bundle.title?.coverImage) current.title = bundle.title;
+    }
+  }
+  return [...byTitle.values()].sort((a, b) => a.releaseTime - b.releaseTime);
+}
+
 /**
  * Возвращает один URL обложки (для обратной совместимости и логов).
  * Предпочтение: сервер (imageBaseUrl), если передан только один вариант.
@@ -817,11 +837,12 @@ async function run() {
     });
   }
 
-  // Как раньше: API отдаёт от новых к старым — переворачиваем, чтобы слать в хронологическом порядке
-  toPost.reverse();
+  // API может вернуть несколько строк одного тайтла после ночной паузы.
+  // Склеиваем их до отправки, чтобы вышел один пост с диапазоном глав.
+  const uniqueToPost = coalesceTitleBundles(toPost);
   let publicNotificationAttempts = 0;
 
-  for (const bundle of toPost) {
+  for (const bundle of uniqueToPost) {
     if (
       config.notifyNewChapters &&
       publicNotificationAttempts >= config.maxPublicNotificationsPerRun
@@ -936,18 +957,6 @@ async function run() {
       if (imageUrls.length > 0) {
         photoPayload = await fetchImageBufferFromUrls(imageUrls);
         if (photoPayload) {
-          if (config.useEnhancedCovers) {
-            try {
-              photoPayload = await postImageGenerator.generateTitleCover({
-                ...finalTitleInfo,
-                name: titleName,
-                coverImage: photoPayload,
-                chapterNumber: chaptersToShow[chaptersToShow.length - 1]?.chapterNumber,
-              });
-            } catch (coverError) {
-              console.warn("Enhanced cover generation failed; sending original:", coverError.message);
-            }
-          }
           if (DEBUG)
             console.log("Cover downloaded, size:", photoPayload.length);
         } else {
@@ -962,6 +971,20 @@ async function run() {
         console.log(
           "No cover for this title (set cover in admin for the title)",
         );
+      }
+      // Даже если исходная обложка недоступна, отправляем фирменную карточку,
+      // а не текст без изображения.
+      if (config.useEnhancedCovers) {
+        try {
+          photoPayload = await postImageGenerator.generateTitleCover({
+            ...finalTitleInfo,
+            name: titleName,
+            coverImage: photoPayload,
+            chapterNumber: chaptersToShow[chaptersToShow.length - 1]?.chapterNumber,
+          });
+        } catch (coverError) {
+          console.warn("Enhanced cover generation failed; sending original:", coverError.message);
+        }
       }
       const opts = {
         parse_mode: "HTML",
