@@ -4,6 +4,10 @@
 const config = require('./config');
 const { waitForMessageSlot } = require('./message-rate-limiter');
 
+// Старые версии API ещё не имеют очереди личных уведомлений. Не опрашиваем
+// несуществующий маршрут каждые несколько минут и не засоряем лог.
+let personalQueueUnsupported = false;
+
 function escapeHtml(s) {
   if (!s) return '';
   return String(s)
@@ -156,6 +160,7 @@ async function sendPersonalNotification(bot, item) {
 
 async function runPersonalNotifications(bot) {
   if (!config.notifyPersonalBookmarks) return;
+  if (personalQueueUnsupported) return;
   if (!config.botApiSecret) {
     console.warn(
       '[PERSONAL] BOT_API_SECRET не задан — личные уведомления отключены',
@@ -167,6 +172,13 @@ async function runPersonalNotifications(bot) {
   try {
     items = await fetchPendingNotifications();
   } catch (e) {
+    if (/\s404:/.test(String(e.message))) {
+      personalQueueUnsupported = true;
+      console.warn(
+        '[PERSONAL] Очередь личных уведомлений пока не поддерживается API (404); проверка отключена до перезапуска.',
+      );
+      return;
+    }
     console.error('[PERSONAL] Ошибка загрузки очереди:', e.message);
     return;
   }
