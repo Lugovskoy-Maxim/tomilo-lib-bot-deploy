@@ -11,7 +11,9 @@ const { waitForMessageSlot } = require("./message-rate-limiter");
 const ImageGenerator = require("./image-generator");
 const MonthlyLeadersCard = require('./monthly-leaders-card');
 
-const bot = new TelegramBot(config.telegramBotToken, { polling: false });
+const bot = config.telegramEnabled
+  ? new TelegramBot(config.telegramBotToken, { polling: false })
+  : null;
 const postImageGenerator = new ImageGenerator({
   siteName: "Tomilo Lib",
   siteUrl: config.siteUrl,
@@ -76,6 +78,7 @@ async function addRandomPostReaction(message) {
 }
 
 async function sendMessageSafe(text, opts) {
+  if (!config.telegramEnabled) return null;
   const raw = String(text || "");
   if (raw.length <= TG_MAX_MESSAGE_LEN) {
     await waitForMessageSlot();
@@ -104,6 +107,7 @@ async function sendMessageSafe(text, opts) {
 }
 
 async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
+  if (!config.telegramEnabled) return null;
   const caption = String(text || "");
   const usePhoto = !!photoPayload && caption.length <= TG_MAX_CAPTION_LEN;
 
@@ -173,10 +177,10 @@ async function syncMaxTitleMessage(state, key, text, titleSlug, today) {
   }
 }
 
-async function sendMaxBroadcast(text, titleSlug) {
+async function sendMaxBroadcast(text, titleSlug, buttons = []) {
   if (!isMaxEnabled()) return;
   try {
-    await sendOrEditMaxMessage({ text, titleSlug });
+    await sendOrEditMaxMessage({ text, titleSlug, buttons });
   } catch (error) {
     console.error('MAX broadcast error:', error.message);
   }
@@ -236,17 +240,20 @@ async function runDailyPromotions(state) {
   if (!state.dailyPromotions) state.dailyPromotions = {};
 
   if (config.notifyDailyAppPromo && state.dailyPromotions.app !== today) {
-    await sendPromoWithLocalImage('android-app-promo.png', [
+    const text = [
       '<b>📱 Tomilo Lib для Android</b>', '',
       'Читайте любимые тайтлы удобнее в приложении.',
       'Выберите способ установки ниже:',
-    ].join('\n'), {
+    ].join('\n');
+    const buttons = [
+      { text: 'Скачать в RuStore ↗', url: config.rustoreUrl },
+      { text: 'APK в GitHub Releases ↗', url: config.githubReleasesUrl },
+    ];
+    await sendPromoWithLocalImage('android-app-promo.png', text, {
       parse_mode: 'HTML',
-      ...dailyPromoButtons([
-        { text: 'Скачать в RuStore ↗', url: config.rustoreUrl },
-        { text: 'APK в GitHub Releases ↗', url: config.githubReleasesUrl },
-      ]),
+      ...dailyPromoButtons(buttons),
     });
+    await sendMaxBroadcast(text, undefined, buttons);
     state.dailyPromotions.app = today;
     sentAny = true;
     console.log('Posted daily Android app promo');
@@ -288,6 +295,9 @@ async function runDailyPromotions(state) {
       console.warn('Hidden chapters guide image is missing; sending text only.');
       await sendMessageSafe(guideText, guideOptions);
     }
+    await sendMaxBroadcast(guideText, undefined, [
+      { text: 'Открыть TOMILO LIB ↗', url: config.siteUrl },
+    ]);
     state.hiddenChaptersGuideLastSentAt = Date.now();
     saveState(config.statePath, state);
     sentAny = true;
@@ -315,6 +325,7 @@ async function runDailyPromotions(state) {
       parse_mode: 'HTML',
       ...dailyPromoButtons(supportButtons),
     });
+    await sendMaxBroadcast(text, undefined, supportButtons);
     // Храним timestamp, а не только дату: следующая просьба о поддержке
     // допустима строго спустя четыре часа после этой отправки.
     state.supportPromoLastSentAt = Date.now();
@@ -405,6 +416,9 @@ async function runMonthlyLeadersPost(state) {
     },
     fileOpts: { filename: 'monthly-leaders.png', contentType: 'image/png' },
   });
+  await sendMaxBroadcast(text, undefined, [
+    { text: 'Открыть лидерборд ↗', url: `${config.siteUrl}/leaderboard` },
+  ]);
   state.monthlyLeadersLastSentAt = Date.now();
   saveState(config.statePath, state);
   console.log(`Posted monthly leaders: ${leaders.length} categories`);
@@ -1216,6 +1230,7 @@ async function run() {
       !state.announcedTitleImports[key];
 
     if (
+      config.telegramEnabled &&
       existing &&
       existing.date === today &&
       existing.messageId &&
@@ -1732,7 +1747,7 @@ async function loop() {
       setTimeout(loop, result.pauseMs);
       return;
     }
-    await runPersonalNotifications(bot);
+    if (config.telegramEnabled) await runPersonalNotifications(bot);
   } catch (e) {
     console.error("Run error:", e.message);
   }
@@ -1740,6 +1755,7 @@ async function loop() {
 }
 
 async function checkChat() {
+  if (!config.telegramEnabled) return true;
   try {
     await bot.getChat(config.telegramChatId);
     console.log("Chat OK:", config.telegramChatId);
@@ -1779,7 +1795,11 @@ async function main() {
     config.pollIntervalMs / 1000,
     "s",
     "| Personal bookmarks:",
-    config.notifyPersonalBookmarks && config.botApiSecret ? "on" : "off",
+    config.telegramEnabled && config.notifyPersonalBookmarks && config.botApiSecret ? "on" : "off",
+  );
+  console.log(
+    "Delivery:",
+    [config.telegramEnabled && "Telegram", config.maxEnabled && "MAX"].filter(Boolean).join(" + "),
   );
   if (!(await checkChat())) process.exit(1);
   loop();

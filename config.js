@@ -1,10 +1,6 @@
 require('dotenv').config();
 
-const required = (name) => {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-};
+const optional = (name) => String(process.env[name] || '').trim();
 
 const parseBool = (v, def) => {
   if (v === undefined || v === '') return def;
@@ -33,13 +29,34 @@ const parseBoundedInt = (v, fallback, min, max) => {
   return Math.min(max, Math.max(min, parsed));
 };
 
+const telegramBotToken = optional('TELEGRAM_BOT_TOKEN');
+const telegramChatId = optional('TELEGRAM_CHAT_ID');
+const maxBotToken = optional('MAX_BOT_TOKEN');
+const maxChatId = optional('MAX_CHAT_ID');
+const maxEnabled = parseBool(process.env.MAX_ENABLED, false);
+const telegramEnabled = parseBool(
+  process.env.TELEGRAM_ENABLED,
+  Boolean(telegramBotToken && telegramChatId),
+);
+
+if (telegramEnabled && (!telegramBotToken || !telegramChatId)) {
+  throw new Error('TELEGRAM_ENABLED=true requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID');
+}
+if (maxEnabled && (!maxBotToken || !maxChatId)) {
+  throw new Error('MAX_ENABLED=true requires MAX_BOT_TOKEN and MAX_CHAT_ID');
+}
+if (!telegramEnabled && !maxEnabled) {
+  throw new Error('Enable at least one delivery: TELEGRAM_ENABLED or MAX_ENABLED');
+}
+
 module.exports = {
-  telegramBotToken: required('TELEGRAM_BOT_TOKEN').trim(),
-  telegramChatId: String(required('TELEGRAM_CHAT_ID')).trim(),
-  /** Дублировать публичные уведомления в MAX. Нужны MAX_BOT_TOKEN и MAX_CHAT_ID. */
-  maxEnabled: parseBool(process.env.MAX_ENABLED, false),
-  maxBotToken: (process.env.MAX_BOT_TOKEN || '').trim(),
-  maxChatId: (process.env.MAX_CHAT_ID || '').trim(),
+  telegramEnabled,
+  telegramBotToken,
+  telegramChatId,
+  /** Публичные уведомления в MAX. Поддерживается самостоятельный MAX-only режим. */
+  maxEnabled,
+  maxBotToken,
+  maxChatId,
   apiUrl: (process.env.API_URL || 'http://localhost:3001/api').replace(/\/$/, ''),
   siteUrl: (process.env.SITE_URL || 'https://tomilo-lib.ru').replace(/\/$/, ''),
   /** Базовый URL для картинок с сервера. По умолчанию = siteUrl. */

@@ -15,16 +15,24 @@ function clampText(text) {
     : `${value.slice(0, MAX_TEXT_LIMIT - 1)}…`;
 }
 
-function makeBody(text, titleSlug) {
-  const attachments = titleSlug
+function makeBody(text, titleSlug, buttons = []) {
+  const resolvedButtons = buttons.length
+    ? buttons
+    : titleSlug
+    ? [{
+      text: 'Читать на сайте ↗',
+      url: `${config.siteUrl}/titles/${titleSlug}`,
+    }]
+    : [];
+  const attachments = resolvedButtons.length
     ? [{
       type: 'inline_keyboard',
       payload: {
-        buttons: [[{
+        buttons: resolvedButtons.map((button) => [{
           type: 'link',
-          text: 'Читать на сайте ↗',
-          url: `${config.siteUrl}/titles/${titleSlug}`,
-        }]],
+          text: String(button.text || 'Открыть ↗').slice(0, 64),
+          url: button.url,
+        }]),
       },
     }]
     : [];
@@ -56,9 +64,9 @@ async function request(method, url, body) {
 }
 
 /** Отправляет новое сообщение либо обновляет существующее сообщение бота в MAX. */
-async function sendOrEditMaxMessage({ text, titleSlug, messageId }) {
+async function sendOrEditMaxMessage({ text, titleSlug, messageId, buttons = [] }) {
   if (!isEnabled()) return null;
-  const body = makeBody(text, titleSlug);
+  const body = makeBody(text, titleSlug, buttons);
   await waitForMessageSlot();
   if (messageId) {
     await request('PUT', `${API_URL}?message_id=${encodeURIComponent(messageId)}`, body);
