@@ -235,6 +235,48 @@ async function runDailyPromotions(state) {
     console.log('Posted daily Android app promo');
   }
 
+  const hiddenChaptersGuideWaitMs = Math.max(
+    0,
+    Number(state.hiddenChaptersGuideLastSentAt || 0) +
+      config.hiddenChaptersGuideIntervalMs -
+      Date.now(),
+  );
+  if (config.notifyHiddenChaptersGuide && hiddenChaptersGuideWaitMs === 0) {
+    const guideText = [
+      '<b>🔒 Не видите скрытые главы?</b>',
+      '',
+      'Их можно включить за несколько секунд:',
+      '1. Нажмите на аватар в правом верхнем углу.',
+      '2. В выпадающем меню найдите «Скрытые главы».',
+      '3. Переключите параметр в положение «Вкл».',
+      '',
+      'После этого скрытые главы станут доступны для чтения.',
+    ].join('\n');
+    const guideImagePath = path.join(__dirname, 'assets', 'hidden-chapters-guide.png');
+    const guideOptions = {
+      parse_mode: 'HTML',
+      ...dailyPromoButtons([
+        { text: 'Открыть TOMILO LIB ↗', url: config.siteUrl },
+      ]),
+    };
+
+    if (fs.existsSync(guideImagePath)) {
+      await sendPhotoOrMessage({
+        photoPayload: fs.createReadStream(guideImagePath),
+        text: guideText,
+        opts: guideOptions,
+        fileOpts: { filename: 'hidden-chapters-guide.png', contentType: 'image/png' },
+      });
+    } else {
+      console.warn('Hidden chapters guide image is missing; sending text only.');
+      await sendMessageSafe(guideText, guideOptions);
+    }
+    state.hiddenChaptersGuideLastSentAt = Date.now();
+    saveState(config.statePath, state);
+    sentAny = true;
+    console.log('Posted hidden chapters guide');
+  }
+
   const supportButtons = [];
   if (config.donateUrl) supportButtons.push({ text: 'Поддержать на Boosty 💙', url: config.donateUrl });
   if (config.donateUrlTbank && /^https?:\/\//i.test(config.donateUrlTbank)) {

@@ -57,6 +57,14 @@ module.exports = {
   maxPersonalNotificationsPerRun: parseBoundedInt(process.env.MAX_PERSONAL_NOTIFICATIONS_PER_RUN, 5, 1, 20),
   notifyDailyAppPromo: parseBool(process.env.NOTIFY_DAILY_APP_PROMO, true),
   notifyDailySupport: parseBool(process.env.NOTIFY_DAILY_SUPPORT, true),
+  /** Подсказка, как включить отображение скрытых глав; по умолчанию раз в неделю. */
+  notifyHiddenChaptersGuide: parseBool(process.env.NOTIFY_HIDDEN_CHAPTERS_GUIDE, true),
+  hiddenChaptersGuideIntervalMs: parseBoundedInt(
+    process.env.HIDDEN_CHAPTERS_GUIDE_INTERVAL_HOURS,
+    168,
+    24,
+    24 * 30,
+  ) * 60 * 60_000,
   /** Пост поддержки — не чаще одного раза за указанный интервал (минимум 4 часа). */
   supportPromoIntervalMs: parseBoundedInt(
     process.env.SUPPORT_PROMO_INTERVAL_MINUTES,
