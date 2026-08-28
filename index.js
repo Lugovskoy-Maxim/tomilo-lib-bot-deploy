@@ -9,12 +9,14 @@ const { runPersonalNotifications } = require("./personal-notifications");
 const { isMaxEnabled, sendOrEditMaxMessage } = require("./max");
 const { waitForMessageSlot } = require("./message-rate-limiter");
 const ImageGenerator = require("./image-generator");
+const MonthlyLeadersCard = require('./monthly-leaders-card');
 
 const bot = new TelegramBot(config.telegramBotToken, { polling: false });
 const postImageGenerator = new ImageGenerator({
   siteName: "Tomilo Lib",
   siteUrl: config.siteUrl,
 });
+const monthlyLeadersCard = new MonthlyLeadersCard();
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
 
@@ -138,6 +140,21 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
   }
 }
 
+/** Публикации с локальной промо-картинкой не теряют текст, если ассет не попал в образ. */
+async function sendPromoWithLocalImage(imageName, text, opts) {
+  const imagePath = path.join(__dirname, 'assets', imageName);
+  if (!fs.existsSync(imagePath)) {
+    console.warn(`Promo image is missing: ${imagePath}; sending text only.`);
+    return sendMessageSafe(text, opts);
+  }
+  return sendPhotoOrMessage({
+    photoPayload: fs.createReadStream(imagePath),
+    text,
+    opts,
+    fileOpts: { filename: imageName, contentType: 'image/png' },
+  });
+}
+
 async function syncMaxTitleMessage(state, key, text, titleSlug, today) {
   if (!isMaxEnabled()) return;
   try {
@@ -219,7 +236,7 @@ async function runDailyPromotions(state) {
   if (!state.dailyPromotions) state.dailyPromotions = {};
 
   if (config.notifyDailyAppPromo && state.dailyPromotions.app !== today) {
-    await sendMessageSafe([
+    await sendPromoWithLocalImage('android-app-promo.png', [
       '<b>📱 Tomilo Lib для Android</b>', '',
       'Читайте любимые тайтлы удобнее в приложении.',
       'Выберите способ установки ниже:',
@@ -294,7 +311,7 @@ async function runDailyPromotions(state) {
         ? ['', `Т-Банк: <code>${escapeHtml(config.donateUrlTbank)}</code>`]
         : []),
     ].join('\n');
-    await sendMessageSafe(text, {
+    await sendPromoWithLocalImage('support-promo.png', text, {
       parse_mode: 'HTML',
       ...dailyPromoButtons(supportButtons),
     });
@@ -310,6 +327,88 @@ async function runDailyPromotions(state) {
     return config.dailyPromotionPauseMs;
   }
   return 0;
+}
+
+function monthLeadersLabel(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow', month: 'long', year: 'numeric',
+  }).formatToParts(now);
+  const month = parts.find((part) => part.type === 'month')?.value || '';
+  const year = parts.find((part) => part.type === 'year')?.value || '';
+  return `${month} ${year} · лидеры`.toUpperCase();
+}
+
+function absoluteMediaUrl(value) {
+  if (!value || typeof value !== 'string') return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${config.imageBaseUrl.replace(/\/$/, '')}/${value.replace(/^\//, '')}`;
+}
+
+function compactValue(value, suffix) {
+  return `${Number(value || 0).toLocaleString('ru-RU')} ${suffix}`;
+}
+
+async function fetchMonthlyLeaders() {
+  const categories = [
+    { category: 'readingTime', metric: 'Время чтения', accent: '#ff6f67', key: 'readingTimeMinutes', suffix: 'мин.' },
+    { category: 'streak', metric: 'Серия дней', accent: '#e6ba64', key: 'currentStreak', suffix: 'дней' },
+    { category: 'chaptersRead', metric: 'Прочитано глав', accent: '#a690ff', key: 'chaptersRead', suffix: 'глав' },
+    { category: 'ratings', metric: 'Оценок за месяц', accent: '#6dd9c3', key: 'ratingsCount', suffix: 'оценок' },
+    { category: 'comments', metric: 'Комментариев за месяц', accent: '#79a8ff', key: 'commentsCount', suffix: 'комментариев' },
+  ];
+  const results = await Promise.all(categories.map(async (item) => {
+    const response = await fetch(
+      `${config.apiUrl}/users/leaderboard?category=${item.category}&period=month&limit=1`,
+    );
+    if (!response.ok) throw new Error(`Monthly leaderboard ${item.category}: HTTP ${response.status}`);
+    const payload = await response.json();
+    const user = payload?.data?.users?.[0];
+    if (!user?.username) return null;
+    return {
+      ...item,
+      ...user,
+      avatar: absoluteMediaUrl(user.avatar),
+      equippedDecorations: {
+        avatar: absoluteMediaUrl(user.equippedDecorations?.avatar),
+        frame: absoluteMediaUrl(user.equippedDecorations?.frame),
+      },
+      valueLabel: compactValue(user[item.key], item.suffix),
+    };
+  }));
+  return results.filter(Boolean);
+}
+
+async function runMonthlyLeadersPost(state) {
+  if (!config.notifyMonthlyLeaders) return false;
+  const waitMs = Math.max(
+    0,
+    Number(state.monthlyLeadersLastSentAt || 0) + config.monthlyLeadersIntervalMs - Date.now(),
+  );
+  if (waitMs > 0) return false;
+  const leaders = await fetchMonthlyLeaders();
+  if (leaders.length < 3) {
+    console.warn(`Monthly leaders skipped: only ${leaders.length} non-empty categories`);
+    return false;
+  }
+  const image = await monthlyLeadersCard.generate(leaders, { period: monthLeadersLabel() });
+  const text = [
+    '<b>🏆 Лидеры месяца TOMILO LIB</b>',
+    '',
+    'Пять рекордов сообщества — спасибо, что читаете вместе с нами.',
+  ].join('\n');
+  await sendPhotoOrMessage({
+    photoPayload: image,
+    text,
+    opts: {
+      parse_mode: 'HTML',
+      ...dailyPromoButtons([{ text: 'Открыть лидерборд ↗', url: `${config.siteUrl}/leaderboard` }]),
+    },
+    fileOpts: { filename: 'monthly-leaders.png', contentType: 'image/png' },
+  });
+  state.monthlyLeadersLastSentAt = Date.now();
+  saveState(config.statePath, state);
+  console.log(`Posted monthly leaders: ${leaders.length} categories`);
+  return true;
 }
 
 /**
@@ -1576,6 +1675,11 @@ async function run() {
   }
 
   const promotionPauseMs = await runDailyPromotions(state);
+  // Не публикуем недельный дайджест в одной волне с ежедневными промо-постами.
+  // Если сегодня уже вышло промо, карточка лидеров спокойно дождётся следующего опроса.
+  const monthlyLeadersSent = promotionPauseMs > 0
+    ? false
+    : await runMonthlyLeadersPost(state);
 
   // Оставляем в state только сообщения за сегодня, чтобы не раздувать файл
   const prunedTitleMessages = {};
@@ -1597,7 +1701,12 @@ async function run() {
     titleMessages: prunedTitleMessages,
     maxTitleMessages: prunedMaxTitleMessages,
   });
-  return promotionPauseMs > 0 ? { pauseMs: promotionPauseMs } : undefined;
+  const pauseMs = promotionPauseMs > 0
+    ? promotionPauseMs
+    : monthlyLeadersSent
+      ? config.dailyPromotionPauseMs
+      : 0;
+  return pauseMs > 0 ? { pauseMs } : undefined;
 }
 
 async function loop() {

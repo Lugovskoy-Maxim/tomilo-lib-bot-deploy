@@ -26,6 +26,7 @@ function loadState(statePath) {
       lastViewsBySlug: data.lastViewsBySlug && typeof data.lastViewsBySlug === 'object' ? data.lastViewsBySlug : {},
       dailyPromotions: data.dailyPromotions && typeof data.dailyPromotions === 'object' ? data.dailyPromotions : {},
       supportPromoLastSentAt: Number(data.supportPromoLastSentAt) || 0,
+      monthlyLeadersLastSentAt: Number(data.monthlyLeadersLastSentAt) || 0,
       hiddenChaptersGuideLastSentAt: Number(data.hiddenChaptersGuideLastSentAt) || 0,
       promotionsPauseUntil: Number(data.promotionsPauseUntil) || 0,
     };
@@ -44,6 +45,7 @@ function loadState(statePath) {
       lastViewsBySlug: {},
       dailyPromotions: {},
       supportPromoLastSentAt: 0,
+      monthlyLeadersLastSentAt: 0,
       hiddenChaptersGuideLastSentAt: 0,
       promotionsPauseUntil: 0,
     };
@@ -72,6 +74,7 @@ function saveState(statePath, state) {
     lastViewsBySlug: state.lastViewsBySlug,
     dailyPromotions: state.dailyPromotions,
     supportPromoLastSentAt: state.supportPromoLastSentAt,
+    monthlyLeadersLastSentAt: state.monthlyLeadersLastSentAt,
     hiddenChaptersGuideLastSentAt: state.hiddenChaptersGuideLastSentAt,
     promotionsPauseUntil: state.promotionsPauseUntil,
   };
