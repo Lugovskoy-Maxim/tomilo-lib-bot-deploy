@@ -28,6 +28,7 @@ function loadState(statePath) {
       supportPromoLastSentAt: Number(data.supportPromoLastSentAt) || 0,
       monthlyLeadersLastSentAt: Number(data.monthlyLeadersLastSentAt) || 0,
       hiddenChaptersGuideLastSentAt: Number(data.hiddenChaptersGuideLastSentAt) || 0,
+      hiddenChaptersGuideMessageId: Number(data.hiddenChaptersGuideMessageId) || 0,
       promotionsPauseUntil: Number(data.promotionsPauseUntil) || 0,
     };
   } catch (e) {
@@ -47,6 +48,7 @@ function loadState(statePath) {
       supportPromoLastSentAt: 0,
       monthlyLeadersLastSentAt: 0,
       hiddenChaptersGuideLastSentAt: 0,
+      hiddenChaptersGuideMessageId: 0,
       promotionsPauseUntil: 0,
     };
   }
@@ -76,6 +78,7 @@ function saveState(statePath, state) {
     supportPromoLastSentAt: state.supportPromoLastSentAt,
     monthlyLeadersLastSentAt: state.monthlyLeadersLastSentAt,
     hiddenChaptersGuideLastSentAt: state.hiddenChaptersGuideLastSentAt,
+    hiddenChaptersGuideMessageId: state.hiddenChaptersGuideMessageId,
     promotionsPauseUntil: state.promotionsPauseUntil,
   };
   // Запись через rename не оставит повреждённый JSON при рестарте контейнера

@@ -284,8 +284,9 @@ async function runDailyPromotions(state) {
       ]),
     };
 
+    let guideMessage;
     if (fs.existsSync(guideImagePath)) {
-      await sendPhotoOrMessage({
+      guideMessage = await sendPhotoOrMessage({
         photoPayload: fs.createReadStream(guideImagePath),
         text: guideText,
         opts: guideOptions,
@@ -293,12 +294,15 @@ async function runDailyPromotions(state) {
       });
     } else {
       console.warn('Hidden chapters guide image is missing; sending text only.');
-      await sendMessageSafe(guideText, guideOptions);
+      guideMessage = await sendMessageSafe(guideText, guideOptions);
     }
     await sendMaxBroadcast(guideText, undefined, [
       { text: 'Открыть TOMILO LIB ↗', url: config.siteUrl },
     ]);
     state.hiddenChaptersGuideLastSentAt = Date.now();
+    if (guideMessage?.message_id) {
+      state.hiddenChaptersGuideMessageId = guideMessage.message_id;
+    }
     saveState(config.statePath, state);
     sentAny = true;
     console.log('Posted hidden chapters guide');
@@ -407,7 +411,7 @@ async function runMonthlyLeadersPost(state) {
     '',
     'Пять рекордов сообщества — спасибо, что читаете вместе с нами.',
   ].join('\n');
-  await sendPhotoOrMessage({
+  const result = await sendPhotoOrMessage({
     photoPayload: image,
     text,
     opts: {
@@ -416,6 +420,15 @@ async function runMonthlyLeadersPost(state) {
     },
     fileOpts: { filename: 'monthly-leaders.png', contentType: 'image/png' },
   });
+  if (config.telegramEnabled && result?.message_id) {
+    try {
+      await bot.pinChatMessage(config.telegramChatId, result.message_id, {
+        disable_notification: true,
+      });
+    } catch (error) {
+      console.warn('Could not pin monthly leaders post:', error.message);
+    }
+  }
   await sendMaxBroadcast(text, undefined, [
     { text: 'Открыть лидерборд ↗', url: `${config.siteUrl}/leaderboard` },
   ]);
@@ -644,11 +657,24 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   return lines.join("\n");
 }
 
-function siteButton(siteUrl, titleSlug) {
+function siteButton(siteUrl, titleSlug, hiddenGuideUrl = null) {
   const url = `${siteUrl}/titles/${titleSlug || ""}`;
+  const rows = [[{ text: "Читать на сайте ↗", url }]];
+  if (hiddenGuideUrl) rows.push([{ text: "Как открыть скрытые главы ↗", url: hiddenGuideUrl }]);
   return {
-    reply_markup: { inline_keyboard: [[{ text: "Читать на сайте ↗", url }]] },
+    reply_markup: { inline_keyboard: rows },
   };
+}
+
+function hiddenChaptersGuidePostUrl(state) {
+  if (config.hiddenChaptersGuideUrl) return config.hiddenChaptersGuideUrl;
+  const chatId = String(config.telegramChatId || '');
+  const messageId = Number(state?.hiddenChaptersGuideMessageId || 0);
+  // Ссылки t.me/c работают для private supergroup/channel с id -100… .
+  if (/^-100\d+$/.test(chatId) && messageId > 0) {
+    return `https://t.me/c/${chatId.slice(4)}/${messageId}`;
+  }
+  return null;
 }
 
 function escapeHtml(s) {
@@ -1366,7 +1392,11 @@ async function run() {
       }
       const opts = {
         parse_mode: "HTML",
-        ...siteButton(config.siteUrl, titleSlug),
+        ...siteButton(
+          config.siteUrl,
+          titleSlug,
+          bundle.isHiddenChapter ? hiddenChaptersGuidePostUrl(state) : null,
+        ),
       };
 
       // Последняя проверка перед запросом к Telegram. При любом повторе от API

@@ -90,6 +90,8 @@ module.exports = {
     24,
     24 * 30,
   ) * 60 * 60_000,
+  /** Публичная ссылка на пост-инструкцию о скрытых главах (необязательно для private-канала). */
+  hiddenChaptersGuideUrl: optional('HIDDEN_CHAPTERS_GUIDE_URL'),
   /** Пост поддержки — не чаще одного раза за указанный интервал (минимум 4 часа). */
   supportPromoIntervalMs: parseBoundedInt(
     process.env.SUPPORT_PROMO_INTERVAL_MINUTES,

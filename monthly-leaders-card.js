@@ -49,11 +49,11 @@ class MonthlyLeadersCard {
     ctx.letterSpacing = '0px';
     ctx.fillStyle = '#f6f7fb';
     ctx.font = `800 74px "${fontFamily}"`;
-    ctx.fillText('Кто зажигает', 74, 198);
+    ctx.fillText('Итоги месяца', 74, 198);
     ctx.fillText('в TOMILO LIB', 74, 278);
     ctx.fillStyle = 'rgba(246,247,251,0.66)';
     ctx.font = `500 29px "${fontFamily}"`;
-    ctx.fillText('Пять личных рекордов сообщества', 78, 332);
+    ctx.fillText('Пять достижений, которые сделали месяц ярче', 78, 332);
 
     const loadedVisuals = await Promise.all(
       cards.map(async (leader) => ({
