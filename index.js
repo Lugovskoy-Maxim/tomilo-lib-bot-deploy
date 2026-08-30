@@ -559,7 +559,11 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
   const isPlural = (Array.isArray(chapters) ? chapters.length : 1) > 1;
   const isNewTitleOnSite = opts.isNewTitleOnSite === true;
   const uh = opts.updateHighlight;
-  const header = isNewTitleOnSite
+  const header = opts.isHiddenChapter
+    ? isPlural
+      ? "<b>🔒 Скрытые главы</b>"
+      : "<b>🔒 Скрытая глава</b>"
+    : isNewTitleOnSite
     ? "<b>🆕 Новый тайтл на сайте</b>"
     : uh === "went_free"
       ? isPlural
@@ -618,7 +622,9 @@ function formatChapterMessage(chapters, titleName, titleInfo = {}, opts = {}) {
       : "";
 
   const accessHint =
-    !isNewTitleOnSite && uh === "went_free"
+    opts.isHiddenChapter
+      ? "<i>Скрытая глава: включите «Скрытые главы» в меню под аватаром.</i>"
+      : !isNewTitleOnSite && uh === "went_free"
       ? "<i>По расписанию доступна бесплатно всем читателям.</i>"
       : !isNewTitleOnSite && uh === "premium"
         ? "<i>Премиум: по подписке или бесплатно позже по расписанию на сайте.</i>"
@@ -828,6 +834,7 @@ function coalesceTitleBundles(bundles) {
     if (bundle.releaseTime >= current.releaseTime) {
       current.releaseTime = bundle.releaseTime;
       current.updateHighlight = bundle.updateHighlight;
+      current.isHiddenChapter = bundle.isHiddenChapter === true;
       if (bundle.title?.coverImage) current.title = bundle.title;
     }
   }
@@ -961,6 +968,17 @@ async function fetchLatestUpdatesTitles() {
   return json.data;
 }
 
+async function fetchHiddenChapterUpdatesTitles() {
+  if (!config.botApiSecret) return [];
+  const res = await fetch(`${config.apiUrl}/telegram/bot/hidden-chapter-updates?limit=100`, {
+    headers: { "X-Bot-Api-Secret": config.botApiSecret },
+  });
+  if (!res.ok) throw new Error(`API hidden-chapter-updates ${res.status}`);
+  const json = await res.json();
+  if (!json.success || !Array.isArray(json.data)) throw new Error("Invalid hidden chapter updates response");
+  return json.data;
+}
+
 /** Подгружаем тайтл по slug — в списке глав не всегда есть coverImage. */
 async function fetchTitleBySlug(slug) {
   if (!slug) return null;
@@ -983,7 +1001,14 @@ async function fetchTitleBySlug(slug) {
  */
 async function prewarmQuietHoursCovers() {
   if (!config.useEnhancedCovers) return;
-  const updates = await fetchLatestUpdatesTitles();
+  const publicUpdates = await fetchLatestUpdatesTitles();
+  let hiddenUpdates = [];
+  try {
+    hiddenUpdates = await fetchHiddenChapterUpdatesTitles();
+  } catch (error) {
+    console.warn("Hidden chapter updates skipped:", error.message);
+  }
+  const updates = [...publicUpdates, ...hiddenUpdates];
   let prepared = 0;
   for (const row of updates) {
     if (prepared >= config.maxPublicNotificationsPerRun) break;
@@ -1157,6 +1182,7 @@ async function run() {
       },
       releaseTime: activityTime,
       updateHighlight: highlight,
+      isHiddenChapter: row.isHiddenChapter === true,
       newChapters,
     });
   }
@@ -1289,6 +1315,7 @@ async function run() {
           milestoneNumbers,
           isNewTitleOnSite,
           updateHighlight,
+          isHiddenChapter: bundle.isHiddenChapter === true,
         },
       );
       const imageUrls = getImageUrls(titleForCover);
