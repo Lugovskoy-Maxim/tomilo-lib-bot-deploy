@@ -29,6 +29,30 @@ const parseBoundedInt = (v, fallback, min, max) => {
   return Math.min(max, Math.max(min, parsed));
 };
 
+const MOSCOW_TIME = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Moscow',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+function isMoscowQuietHours(start, end, now = new Date()) {
+  if (start === end) return false;
+  const values = Object.fromEntries(
+    MOSCOW_TIME.formatToParts(now)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const current = values.hour * 60 + values.minute;
+  const [startHour, startMinute] = start.split(':').map(Number);
+  const [endHour, endMinute] = end.split(':').map(Number);
+  const startMinutes = startHour * 60 + startMinute;
+  const endMinutes = endHour * 60 + endMinute;
+  return startMinutes < endMinutes
+    ? current >= startMinutes && current < endMinutes
+    : current >= startMinutes || current < endMinutes;
+}
+
 const telegramBotToken = optional('TELEGRAM_BOT_TOKEN');
 const telegramChatId = optional('TELEGRAM_CHAT_ID');
 const maxBotToken = optional('MAX_BOT_TOKEN');
@@ -66,9 +90,16 @@ module.exports = {
     ? String(process.env.IMAGE_CLOUD_BASE_URL).replace(/\/$/, '')
     : 'https://s3.regru.cloud/tomilolib',
   pollIntervalMs: Math.max(60_000, parseInt(process.env.POLL_INTERVAL_MS || '300000', 10)),
-  /** Ночные тихие часы по Москве. Одинаковые значения отключают паузу. */
+  /** Ночные тихие часы по Москве. В это время Telegram отправляет сообщения без звука. */
   quietHoursStart: parseTimeOfDay(process.env.QUIET_HOURS_START, '00:00'),
   quietHoursEnd: parseTimeOfDay(process.env.QUIET_HOURS_END, '08:00'),
+  isQuietHours(now) {
+    return isMoscowQuietHours(
+      parseTimeOfDay(process.env.QUIET_HOURS_START, '00:00'),
+      parseTimeOfDay(process.env.QUIET_HOURS_END, '08:00'),
+      now,
+    );
+  },
   /** Ограничение одной волны, чтобы накопившиеся обновления не стали спамом. */
   maxPublicNotificationsPerRun: parseBoundedInt(process.env.MAX_PUBLIC_NOTIFICATIONS_PER_RUN, 5, 1, 20),
   maxPersonalNotificationsPerRun: parseBoundedInt(process.env.MAX_PERSONAL_NOTIFICATIONS_PER_RUN, 5, 1, 20),

@@ -127,6 +127,7 @@ async function sendPersonalNotification(bot, item) {
   const opts = {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
+    disable_notification: config.isQuietHours(),
     ...siteButton(config.siteUrl, item.titleSlug, item.chapterId),
   };
   const imageUrls = getImageUrls(item.coverImage);

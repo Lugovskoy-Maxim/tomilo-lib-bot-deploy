@@ -85,6 +85,7 @@ async function sendMessageSafe(text, opts) {
     const result = await bot.sendMessage(config.telegramChatId, raw, {
       disable_web_page_preview: true,
       ...opts,
+      disable_notification: config.isQuietHours() || opts?.disable_notification === true,
     });
     await addRandomPostReaction(result);
     return result;
@@ -101,6 +102,7 @@ async function sendMessageSafe(text, opts) {
   const result = await bot.sendMessage(config.telegramChatId, plain, {
     disable_web_page_preview: true,
     ...rest,
+    disable_notification: config.isQuietHours() || rest.disable_notification === true,
   });
   await addRandomPostReaction(result);
   return result;
@@ -125,7 +127,11 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
     const result = await bot.sendPhoto(
       config.telegramChatId,
       photoPayload,
-      { caption, ...opts },
+      {
+        caption,
+        ...opts,
+        disable_notification: config.isQuietHours() || opts?.disable_notification === true,
+      },
       fileOpts,
     );
     await addRandomPostReaction(result);
@@ -184,39 +190,6 @@ async function sendMaxBroadcast(text, titleSlug, buttons = []) {
   } catch (error) {
     console.error('MAX broadcast error:', error.message);
   }
-}
-
-const MOSCOW_TIME = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Europe/Moscow',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hourCycle: 'h23',
-});
-
-function timeToMinutes(value) {
-  const [hours, minutes] = value.split(':').map(Number);
-  return hours * 60 + minutes;
-}
-
-/** Возвращает время ожидания до конца тихих часов по Москве или 0. */
-function getQuietHoursDelayMs(now = new Date()) {
-  if (config.quietHoursStart === config.quietHoursEnd) return 0;
-  const values = Object.fromEntries(
-    MOSCOW_TIME.formatToParts(now)
-      .filter((part) => part.type !== 'literal')
-      .map((part) => [part.type, Number(part.value)]),
-  );
-  const current = values.hour * 60 + values.minute;
-  const start = timeToMinutes(config.quietHoursStart);
-  const end = timeToMinutes(config.quietHoursEnd);
-  const isQuiet = start < end
-    ? current >= start && current < end
-    : current >= start || current < end;
-  if (!isQuiet) return 0;
-  let minutesUntilEnd = (end - current + 1440) % 1440;
-  if (minutesUntilEnd === 0) minutesUntilEnd = 1440;
-  return Math.max(1_000, minutesUntilEnd * 60_000 - values.second * 1_000 - now.getMilliseconds());
 }
 
 function getMoscowDate(now = new Date()) {
@@ -1783,19 +1756,8 @@ async function run() {
 
 async function loop() {
   console.log("Checking for new titles and chapters...");
-  const quietDelay = getQuietHoursDelayMs();
-  if (quietDelay > 0) {
-    const wakeAt = new Date(Date.now() + quietDelay).toLocaleTimeString('ru-RU', {
-      timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit',
-    });
-    console.log(`Quiet hours (Moscow): notifications paused until ${wakeAt}`);
-    try {
-      await prewarmQuietHoursCovers();
-    } catch (error) {
-      console.warn("Quiet-hours cover preparation failed:", error.message);
-    }
-    setTimeout(loop, quietDelay);
-    return;
+  if (config.isQuietHours()) {
+    console.log('Quiet hours (Moscow): Telegram messages will be sent without sound.');
   }
   try {
     const result = await run();
