@@ -45,6 +45,7 @@ async function runReportNotifications(bot, dependencies = {}) {
       for (const text of item.messages) {
         await waitSlot();
         await bot.sendMessage(activeConfig.telegramReportsChatId, String(text), {
+          parse_mode: 'HTML',
           message_thread_id: activeConfig.telegramReportsThreadId,
           disable_web_page_preview: true,
           disable_notification: true,

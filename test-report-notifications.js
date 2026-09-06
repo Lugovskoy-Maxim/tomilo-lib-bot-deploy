@@ -23,6 +23,7 @@ test('sends through bot-deploy and acknowledges only after success', async () =>
   await runReportNotifications(bot, { config: activeConfig, apiFetch, waitForMessageSlot: async () => {} });
   assert.deepEqual(calls[1].send, ['-100123', 'Жалоба', {
     message_thread_id: 3,
+    parse_mode: 'HTML',
     disable_web_page_preview: true,
     disable_notification: true,
   }]);
