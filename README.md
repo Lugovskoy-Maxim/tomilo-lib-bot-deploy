@@ -192,3 +192,7 @@ NODE_EXTRA_CA_CERTS=/certs/mincifry.pem
 Папка `certs` монтируется контейнеру только на чтение и не попадает в образ.
 Без этих сертификатов Node.js обычно не сможет установить доверенное TLS-
 соединение с `platform-api2.max.ru`.
+
+Новые тайтлы отправляются в старый чат `TELEGRAM_CHAT_ID` и в топик
+`TELEGRAM_CHAPTERS_THREAD_ID` группы `TELEGRAM_CHAPTERS_CHAT_ID`
+(по умолчанию — `TELEGRAM_CHAT_ID2`). Обычные обновления глав идут в топик.

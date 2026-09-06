@@ -1400,6 +1400,35 @@ async function run() {
           maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
         continue;
       }
+      // Первичный анонс также публикуем в старом чате, без ID топика.
+      // Сохраняем отдельную отметку до отправки в топик: если она упадёт,
+      // повторный проход не продублирует уже доставленный анонс в старом чате.
+      if (isNewTitleOnSite && config.telegramEnabled) {
+        const legacyKey = JSON.stringify([config.telegramChatId, key]);
+        state.legacyTitleAnnouncements ||= {};
+        if (!state.legacyTitleAnnouncements[legacyKey]) {
+          const { message_thread_id, ...legacyOpts } = opts;
+          try {
+            const result = await sendPhotoOrMessage({
+              photoPayload,
+              text,
+              opts: legacyOpts,
+              chatId: config.telegramChatId,
+              fileOpts: Buffer.isBuffer(photoPayload)
+                ? { filename: "cover.jpg", contentType: "image/jpeg" }
+                : undefined,
+            });
+            if (!result?.message_id) throw new Error("No message_id returned");
+            state.legacyTitleAnnouncements[legacyKey] = result.message_id;
+            saveState(config.statePath, state);
+          } catch (error) {
+            console.error("New title announcement to old chat failed:", error.message);
+            // Не отмечаем главы обработанными и не продвигаем курсор дальше:
+            // следующий проход повторит доставку анонса.
+            break;
+          }
+        }
+      }
       if (isEdit && existing) {
         try {
           if (existing.hasPhoto) {
