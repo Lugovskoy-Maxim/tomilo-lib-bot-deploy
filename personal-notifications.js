@@ -213,4 +213,4 @@ async function runPersonalNotifications(bot) {
   }
 }
 
-module.exports = { runPersonalNotifications };
+module.exports = { apiFetch, runPersonalNotifications };

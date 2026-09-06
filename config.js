@@ -55,6 +55,18 @@ function isMoscowQuietHours(start, end, now = new Date()) {
 
 const telegramBotToken = optional('TELEGRAM_BOT_TOKEN');
 const telegramChatId = optional('TELEGRAM_CHAT_ID');
+const rawReportsChatId = optional('TELEGRAM_CHAT_ID2');
+const reportsChatMatch = rawReportsChatId.match(/^(-?\d+|@[A-Za-z0-9_]+?)(?:_(\d+))?$/);
+if (rawReportsChatId && !reportsChatMatch) {
+  throw new Error('TELEGRAM_CHAT_ID2 must be a chat id, @username, or chatId_topicId');
+}
+const telegramReportsChatId = reportsChatMatch?.[1] || '';
+const telegramReportsThreadId = parseBoundedInt(
+  reportsChatMatch?.[2] || process.env.TELEGRAM_REPORTS_THREAD_ID,
+  3,
+  1,
+  Number.MAX_SAFE_INTEGER,
+);
 const maxBotToken = optional('MAX_BOT_TOKEN');
 const maxChatId = optional('MAX_CHAT_ID');
 const maxEnabled = parseBool(process.env.MAX_ENABLED, false);
@@ -77,6 +89,8 @@ module.exports = {
   telegramEnabled,
   telegramBotToken,
   telegramChatId,
+  telegramReportsChatId,
+  telegramReportsThreadId,
   /** Публичные уведомления в MAX. Поддерживается самостоятельный MAX-only режим. */
   maxEnabled,
   maxBotToken,
@@ -147,6 +161,9 @@ module.exports = {
   notifyNewChapters: parseBool(process.env.NOTIFY_NEW_CHAPTERS, true),
   /** Личные уведомления о главах в закладках (очередь API) */
   notifyPersonalBookmarks: parseBool(process.env.NOTIFY_PERSONAL_BOOKMARKS, true),
+  /** Жалобы из очереди API отправляются этим контейнером через VPN. */
+  notifyReports: parseBool(process.env.NOTIFY_REPORTS, true),
+  reportsPollIntervalMs: parseBoundedInt(process.env.REPORTS_POLL_INTERVAL_MS, 15000, 10000, 300000),
   /** Секрет для /telegram/bot/* (тот же, что TELEGRAM_BOT_API_SECRET на API) */
   botApiSecret: (process.env.BOT_API_SECRET || process.env.TELEGRAM_BOT_API_SECRET || '').trim(),
   /** Оповещения «Новый тайтл на сайте» — когда к тайтлу, созданному сегодня, добавляются главы */

@@ -6,6 +6,7 @@ const dns = require("dns");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
 const { runPersonalNotifications } = require("./personal-notifications");
+const { runReportNotifications } = require("./report-notifications");
 const { isMaxEnabled, sendOrEditMaxMessage } = require("./max");
 const { waitForMessageSlot } = require("./message-rate-limiter");
 const ImageGenerator = require("./image-generator");
@@ -1773,6 +1774,15 @@ async function loop() {
   setTimeout(loop, config.pollIntervalMs);
 }
 
+async function reportsLoop() {
+  try {
+    await runReportNotifications(bot);
+  } catch (e) {
+    console.error('[REPORTS] Run error:', e.message);
+  }
+  setTimeout(reportsLoop, config.reportsPollIntervalMs);
+}
+
 async function checkChat() {
   if (!config.telegramEnabled) return true;
   try {
@@ -1821,6 +1831,12 @@ async function main() {
     [config.telegramEnabled && "Telegram", config.maxEnabled && "MAX"].filter(Boolean).join(" + "),
   );
   if (!(await checkChat())) process.exit(1);
+  if (config.telegramEnabled && config.notifyReports && config.telegramReportsChatId) {
+    console.log(
+      `Reports: ${config.telegramReportsChatId}, topic ${config.telegramReportsThreadId}, poll ${config.reportsPollIntervalMs / 1000}s`,
+    );
+    reportsLoop();
+  }
   loop();
 }
 main();
