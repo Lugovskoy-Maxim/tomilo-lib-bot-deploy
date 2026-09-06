@@ -67,6 +67,14 @@ const telegramReportsThreadId = parseBoundedInt(
   1,
   Number.MAX_SAFE_INTEGER,
 );
+const telegramChaptersChatId =
+  optional('TELEGRAM_CHAPTERS_CHAT_ID') || telegramReportsChatId || telegramChatId;
+const telegramChaptersThreadId = parseBoundedInt(
+  process.env.TELEGRAM_CHAPTERS_THREAD_ID,
+  44,
+  1,
+  Number.MAX_SAFE_INTEGER,
+);
 const maxBotToken = optional('MAX_BOT_TOKEN');
 const maxChatId = optional('MAX_CHAT_ID');
 const maxEnabled = parseBool(process.env.MAX_ENABLED, false);
@@ -89,6 +97,8 @@ module.exports = {
   telegramEnabled,
   telegramBotToken,
   telegramChatId,
+  telegramChaptersChatId,
+  telegramChaptersThreadId,
   telegramReportsChatId,
   telegramReportsThreadId,
   /** Публичные уведомления в MAX. Поддерживается самостоятельный MAX-only режим. */

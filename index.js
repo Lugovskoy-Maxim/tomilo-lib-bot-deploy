@@ -52,7 +52,7 @@ function looksLikeCaptionTooLongError(msg) {
   );
 }
 
-async function addRandomPostReaction(message) {
+async function addRandomPostReaction(message, chatId = config.telegramChatId) {
   if (
     !config.postReactionsEnabled ||
     !message?.message_id ||
@@ -68,7 +68,7 @@ async function addRandomPostReaction(message) {
     // свежего API setMessageReaction, поэтому вызываем его штатный request.
     await bot._request("setMessageReaction", {
       form: {
-        chat_id: config.telegramChatId,
+        chat_id: chatId,
         message_id: message.message_id,
         reaction: JSON.stringify([{ type: "emoji", emoji }]),
       },
@@ -79,17 +79,17 @@ async function addRandomPostReaction(message) {
   }
 }
 
-async function sendMessageSafe(text, opts) {
+async function sendMessageSafe(text, opts, chatId = config.telegramChatId) {
   if (!config.telegramEnabled) return null;
   const raw = String(text || "");
   if (raw.length <= TG_MAX_MESSAGE_LEN) {
     await waitForMessageSlot();
-    const result = await bot.sendMessage(config.telegramChatId, raw, {
+    const result = await bot.sendMessage(chatId, raw, {
       disable_web_page_preview: true,
       ...opts,
       disable_notification: config.isQuietHours() || opts?.disable_notification === true,
     });
-    await addRandomPostReaction(result);
+    await addRandomPostReaction(result, chatId);
     return result;
   }
 
@@ -101,16 +101,22 @@ async function sendMessageSafe(text, opts) {
       `Message too long (${raw.length}), sending plain-text truncated`,
     );
   await waitForMessageSlot();
-  const result = await bot.sendMessage(config.telegramChatId, plain, {
+  const result = await bot.sendMessage(chatId, plain, {
     disable_web_page_preview: true,
     ...rest,
     disable_notification: config.isQuietHours() || rest.disable_notification === true,
   });
-  await addRandomPostReaction(result);
+  await addRandomPostReaction(result, chatId);
   return result;
 }
 
-async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
+async function sendPhotoOrMessage({
+  photoPayload,
+  text,
+  opts,
+  fileOpts,
+  chatId = config.telegramChatId,
+}) {
   if (!config.telegramEnabled) return null;
   const caption = String(text || "");
   const usePhoto = !!photoPayload && caption.length <= TG_MAX_CAPTION_LEN;
@@ -121,13 +127,13 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
         `Caption too long for sendPhoto (${caption.length}), sending text-only`,
       );
     }
-    return sendMessageSafe(caption, opts);
+    return sendMessageSafe(caption, opts, chatId);
   }
 
   try {
     await waitForMessageSlot();
     const result = await bot.sendPhoto(
-      config.telegramChatId,
+      chatId,
       photoPayload,
       {
         caption,
@@ -136,7 +142,7 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
       },
       fileOpts,
     );
-    await addRandomPostReaction(result);
+    await addRandomPostReaction(result, chatId);
     return result;
   } catch (e) {
     const msg =
@@ -146,7 +152,7 @@ async function sendPhotoOrMessage({ photoPayload, text, opts, fileOpts }) {
         console.log(
           "sendPhoto failed: caption too long, retrying as text-only",
         );
-      return sendMessageSafe(caption, opts);
+      return sendMessageSafe(caption, opts, chatId);
     }
     throw e;
   }
@@ -1225,6 +1231,7 @@ async function run() {
     } = bundle;
     const key = titleSlug || titleName;
     const existing = state.titleMessages[key];
+    const chapterChatId = config.telegramChaptersChatId;
 
     let chaptersToShow;
     let isEdit = false;
@@ -1259,6 +1266,7 @@ async function run() {
     if (
       config.telegramEnabled &&
       existing &&
+      String(existing.chatId) === String(chapterChatId) &&
       existing.date === today &&
       existing.messageId &&
       existing.chapters
@@ -1367,6 +1375,7 @@ async function run() {
       }
       const opts = {
         parse_mode: "HTML",
+        message_thread_id: config.telegramChaptersThreadId,
         ...siteButton(
           config.siteUrl,
           titleSlug,
@@ -1405,7 +1414,7 @@ async function run() {
                     parse_mode: "HTML",
                   },
                   {
-                    chat_id: config.telegramChatId,
+                    chat_id: chapterChatId,
                     message_id: existing.messageId,
                     reply_markup: opts.reply_markup,
                   },
@@ -1416,21 +1425,21 @@ async function run() {
                 // обновляем текст и не создаём второй пост.
                 console.warn("Cover update failed; updating caption only:", mediaError.message);
                 await bot.editMessageCaption(text, {
-                  chat_id: config.telegramChatId,
+                  chat_id: chapterChatId,
                   message_id: existing.messageId,
                   ...opts,
                 });
               }
             } else {
               await bot.editMessageCaption(text, {
-                chat_id: config.telegramChatId,
+                chat_id: chapterChatId,
                 message_id: existing.messageId,
                 ...opts,
               });
             }
             state.titleMessages[key] = {
               messageId: existing.messageId,
-              chatId: config.telegramChatId,
+              chatId: chapterChatId,
               date: today,
               hasPhoto: true,
               chapters: chaptersToShow,
@@ -1462,12 +1471,13 @@ async function run() {
               photoPayload,
               text,
               opts,
+              chatId: chapterChatId,
               fileOpts: { filename: "cover.jpg", contentType: "image/jpeg" },
             });
             if (result && result.message_id) {
               try {
                 await bot.deleteMessage(
-                  config.telegramChatId,
+                  chapterChatId,
                   existing.messageId,
                 );
               } catch (delErr) {
@@ -1479,7 +1489,7 @@ async function run() {
               }
               state.titleMessages[key] = {
                 messageId: result.message_id,
-                chatId: config.telegramChatId,
+                chatId: chapterChatId,
                 date: today,
                 hasPhoto: true,
                 chapters: chaptersToShow,
@@ -1509,14 +1519,14 @@ async function run() {
             }
           }
           await bot.editMessageText(text, {
-            chat_id: config.telegramChatId,
+            chat_id: chapterChatId,
             message_id: existing.messageId,
             disable_web_page_preview: true,
             ...opts,
           });
           state.titleMessages[key] = {
             messageId: existing.messageId,
-            chatId: config.telegramChatId,
+            chatId: chapterChatId,
             date: today,
             hasPhoto: existing.hasPhoto,
             chapters: chaptersToShow,
@@ -1554,6 +1564,7 @@ async function run() {
           photoPayload,
           text,
           opts,
+          chatId: chapterChatId,
           fileOpts: Buffer.isBuffer(photoPayload)
             ? { filename: "cover.jpg", contentType: "image/jpeg" }
             : undefined,
@@ -1562,7 +1573,7 @@ async function run() {
         if (messageId) {
           state.titleMessages[key] = {
             messageId,
-            chatId: config.telegramChatId,
+            chatId: chapterChatId,
             date: today,
             hasPhoto: !!photoPayload,
             chapters: chaptersToShow,
@@ -1595,12 +1606,12 @@ async function run() {
           (errMsg.includes("wrong file") || errMsg.includes("failed to get"))
         ) {
           try {
-            const result = await sendMessageSafe(text, opts);
+            const result = await sendMessageSafe(text, opts, chapterChatId);
             const messageId = result && result.message_id;
             if (messageId) {
               state.titleMessages[key] = {
                 messageId,
-                chatId: config.telegramChatId,
+                chatId: chapterChatId,
                 date: today,
                 hasPhoto: false,
                 chapters: chaptersToShow,
