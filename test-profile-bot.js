@@ -17,6 +17,10 @@ test('link command accepts bot username', async () => {
   const f = fixture(); await f.onMessage(message('/link@tomilo_bot ABCDEFGH'));
   assert.equal(f.calls[0][2].code, 'ABCDEFGH');
 });
+test('accepts a link code as a plain message', async () => {
+  const f = fixture(); await f.onMessage(message('ABCDEFGH'));
+  assert.deepEqual(f.calls[0], ['api', '/telegram/bot/link', { code: 'ABCDEFGH', telegramUserId: 42, chatId: 42, username: 'reader' }]);
+});
 test('group updates cannot link or read profile', async () => {
   const f = fixture(); const msg = message('/link ABCDEFGH'); msg.chat = { type: 'group', id: -123 };
   await f.onMessage(msg); assert.equal(f.calls.length, 0);

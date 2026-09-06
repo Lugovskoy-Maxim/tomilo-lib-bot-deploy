@@ -5,6 +5,7 @@ const COMMANDS = [
   { command: 'profile', description: 'Информация о профиле' },
   { command: 'notifications', description: 'Уведомления и звук' },
 ];
+const LINK_CODE_RE = /^[A-HJ-NP-Z2-9]{8}$/i;
 function profileText(info) {
   if (!info.linked) return '👤 Профиль не привязан.\n\nПолучите код на сайте: Профиль → Настройки → Telegram. Отправьте /link КОД или откройте ссылку привязки.';
   return ['👤 Профиль', '', `Имя: ${info.username || '—'}`,
@@ -43,14 +44,21 @@ function setupProfileBot(bot, { apiFetch, config, waitForMessageSlot = async () 
       const command = msg.text.trim().match(/^\/(start|link|profile|notifications|status|help)(?:@\w+)?(?:\s+(.*))?$/i);
       const name = command?.[1].toLowerCase();
       const argument = command?.[2]?.trim() || '';
-      const code = name === 'link' ? argument : name === 'start' && argument.startsWith('link_') ? argument.slice(5) : '';
+      const plainCode = !command && LINK_CODE_RE.test(msg.text.trim()) ? msg.text.trim() : '';
+      const code = name === 'link'
+        ? argument
+        : name === 'start' && argument.toLowerCase().startsWith('link_')
+          ? argument.slice(5)
+          : plainCode;
       if (code) {
         await apiFetch('/telegram/bot/link', { method: 'POST', body: JSON.stringify({ code: code.toUpperCase(), telegramUserId: msg.from.id, chatId: msg.chat.id, username: msg.from.username }) });
         await send(msg.chat.id, '✅ Профиль привязан. Здесь будут приходить персональные уведомления о новых главах в закладках.', { reply_markup: { keyboard: [['👤 Профиль', '🔔 Уведомления']], resize_keyboard: true } });
       } else if (name === 'link') {
         return show(msg.chat.id, { linked: false });
       } else if (name === 'start' || name === 'help') {
-        await send(msg.chat.id, 'Tomilo Lib\n\n/link КОД — привязать аккаунт\n/profile — профиль\n/notifications — уведомления и звук', { reply_markup: { keyboard: [['👤 Профиль', '🔔 Уведомления']], resize_keyboard: true } });
+        await send(msg.chat.id, 'Tomilo Lib\n\nЧтобы привязать аккаунт, отправьте сюда 8-значный код с сайта или команду /link КОД.\n\n/profile — профиль\n/notifications — уведомления и звук', { reply_markup: { keyboard: [['👤 Профиль', '🔔 Уведомления']], resize_keyboard: true } });
+      } else if (!command) {
+        return send(msg.chat.id, 'Отправьте 8-значный код привязки из профиля на сайте или откройте /profile.');
       }
       await show(msg.chat.id, await get(msg.from.id));
     } catch (error) { await fail(msg.chat.id, error); }
