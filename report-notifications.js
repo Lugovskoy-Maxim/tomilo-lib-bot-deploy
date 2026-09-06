@@ -42,13 +42,21 @@ async function runReportNotifications(bot, dependencies = {}) {
   for (const item of items) {
     if (!item.notificationId || !Array.isArray(item.messages) || !item.messages.length) continue;
     try {
-      for (const text of item.messages) {
+      for (const [index, text] of item.messages.entries()) {
         await waitSlot();
+        let replyMarkup;
+        if (index === 0 && typeof item.targetPath === 'string' && item.targetPath.startsWith('/')) {
+          const url = new URL(item.targetPath, `${activeConfig.siteUrl}/`).toString();
+          replyMarkup = {
+            inline_keyboard: [[{ text: `${item.buttonLabel || 'Открыть'} ↗`, url }]],
+          };
+        }
         await bot.sendMessage(activeConfig.telegramReportsChatId, String(text), {
           parse_mode: 'HTML',
           message_thread_id: activeConfig.telegramReportsThreadId,
           disable_web_page_preview: true,
           disable_notification: true,
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
         });
       }
       await acknowledge([item.notificationId], fetchApi);

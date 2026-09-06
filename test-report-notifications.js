@@ -8,6 +8,7 @@ const activeConfig = {
   telegramReportsChatId: '-100123',
   telegramReportsThreadId: 3,
   botApiSecret: 'secret',
+  siteUrl: 'https://tomilo-lib.ru',
 };
 
 test('sends through bot-deploy and acknowledges only after success', async () => {
@@ -15,7 +16,7 @@ test('sends through bot-deploy and acknowledges only after success', async () =>
   const apiFetch = async (path, options) => {
     calls.push({ path, options });
     if (path.endsWith('?limit=10')) {
-      return { success: true, data: [{ notificationId: '507f1f77bcf86cd799439011', messages: ['Жалоба'] }] };
+      return { success: true, data: [{ notificationId: '507f1f77bcf86cd799439011', messages: ['Жалоба'], targetPath: '/titles/title/chapter/chapter', buttonLabel: 'Открыть главу' }] };
     }
     return { success: true };
   };
@@ -26,6 +27,7 @@ test('sends through bot-deploy and acknowledges only after success', async () =>
     parse_mode: 'HTML',
     disable_web_page_preview: true,
     disable_notification: true,
+    reply_markup: { inline_keyboard: [[{ text: 'Открыть главу ↗', url: 'https://tomilo-lib.ru/titles/title/chapter/chapter' }]] },
   }]);
   assert.equal(calls[2].path, '/telegram/bot/pending-reports/ack');
 });
