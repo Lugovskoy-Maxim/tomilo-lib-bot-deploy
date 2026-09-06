@@ -1,7 +1,8 @@
 node_modules/
 .env
 .bot-state.json
-wireguard/wg0.conf
+# Local VPN configurations may contain private keys.
+wireguard/*.conf
 *.log
 test-title-cover.jpg
 test-site-promo.jpg
