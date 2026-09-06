@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test test-report-notifications.js && bash test-update-container.sh success && bash test-update-container.sh pull && bash test-update-container.sh dirty && bash test-update-container.sh diverged && bash test-update-container.sh build-failed && bash test-update-container.sh startup-failed"
+    "test": "node --test test-report-notifications.js test-profile-bot.js test-personal-notifications.js && bash test-update-container.sh success && bash test-update-container.sh pull && bash test-update-container.sh dirty && bash test-update-container.sh diverged && bash test-update-container.sh build-failed && bash test-update-container.sh startup-failed"
   },
   "dependencies": {
     "canvas": "^3.2.3",

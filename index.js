@@ -5,7 +5,8 @@ const path = require("path");
 const dns = require("dns");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
-const { runPersonalNotifications } = require("./personal-notifications");
+const { setupProfileBot, COMMANDS } = require("./profile-bot");
+const { apiFetch, runPersonalNotifications } = require("./personal-notifications");
 const { runReportNotifications } = require("./report-notifications");
 const { isMaxEnabled, sendOrEditMaxMessage } = require("./max");
 const { waitForMessageSlot } = require("./message-rate-limiter");
@@ -13,7 +14,7 @@ const ImageGenerator = require("./image-generator");
 const MonthlyLeadersCard = require('./monthly-leaders-card');
 
 const bot = config.telegramEnabled
-  ? new TelegramBot(config.telegramBotToken, { polling: false })
+  ? new TelegramBot(config.telegramBotToken, { polling: { autoStart: false, params: { allowed_updates: ['message', 'callback_query'] } } })
   : null;
 const postImageGenerator = new ImageGenerator({
   siteName: "Tomilo Lib",
@@ -1767,11 +1768,19 @@ async function loop() {
       setTimeout(loop, result.pauseMs);
       return;
     }
-    if (config.telegramEnabled) await runPersonalNotifications(bot);
   } catch (e) {
     console.error("Run error:", e.message);
   }
   setTimeout(loop, config.pollIntervalMs);
+}
+
+async function personalLoop() {
+  try {
+    await runPersonalNotifications(bot);
+  } catch (error) {
+    console.error('[PERSONAL] Run error:', error.message);
+  }
+  setTimeout(personalLoop, config.pollIntervalMs);
 }
 
 async function reportsLoop() {
@@ -1831,6 +1840,15 @@ async function main() {
     [config.telegramEnabled && "Telegram", config.maxEnabled && "MAX"].filter(Boolean).join(" + "),
   );
   if (!(await checkChat())) process.exit(1);
+  if (config.telegramEnabled) {
+    setupProfileBot(bot, { apiFetch, config, waitForMessageSlot });
+    bot.on('polling_error', error => console.error('[PROFILE] Polling error:', error.code || 'unknown'));
+    await bot.setMyCommands(COMMANDS, { scope: { type: 'all_private_chats' } });
+    bot.startPolling().catch(error => {
+      console.error('[PROFILE] Polling failed:', error.code || 'unknown');
+    });
+    personalLoop();
+  }
   if (config.telegramEnabled && config.notifyReports && config.telegramReportsChatId) {
     console.log(
       `Reports: ${config.telegramReportsChatId}, topic ${config.telegramReportsThreadId}, poll ${config.reportsPollIntervalMs / 1000}s`,
@@ -1839,4 +1857,4 @@ async function main() {
   }
   loop();
 }
-main();
+main().catch(error => { console.error('[BOT] Startup failed:', error.message); process.exit(1); });

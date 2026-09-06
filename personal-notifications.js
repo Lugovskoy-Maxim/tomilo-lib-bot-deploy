@@ -34,7 +34,7 @@ function formatPersonalChapterMessage(item) {
     '<b>✨ Новая глава в закладках</b>',
     '',
     `<b>${title}</b>`,
-    `<b>📖 Глава ${chapterNum}</b>`,
+    `<b>📖 Глава ${escapeHtml(String(chapterNum))}</b>`,
   ];
   return lines.join('\n');
 }
@@ -98,10 +98,13 @@ async function apiFetch(path, options = {}) {
   if (config.botApiSecret) {
     headers['X-Bot-Api-Secret'] = config.botApiSecret;
   }
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers, signal: options.signal || AbortSignal.timeout(15000) });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API ${path} ${res.status}: ${text.slice(0, 200)}`);
+    const error = new Error(`API ${path} ${res.status}`);
+    error.status = res.status;
+    try { error.apiMessage = JSON.parse(text).message; } catch (_) {}
+    throw error;
   }
   return res.json();
 }
@@ -123,11 +126,12 @@ async function ackNotifications(notificationIds) {
 }
 
 async function sendPersonalNotification(bot, item) {
+  if (!Number.isSafeInteger(Number(item.chatId)) || Number(item.chatId) <= 0) return false;
   const text = formatPersonalChapterMessage(item);
   const opts = {
     parse_mode: 'HTML',
     disable_web_page_preview: true,
-    disable_notification: config.isQuietHours(),
+    disable_notification: item.soundEnabled === false,
     ...siteButton(config.siteUrl, item.titleSlug, item.chapterId),
   };
   const imageUrls = getImageUrls(item.coverImage);
@@ -138,7 +142,7 @@ async function sendPersonalNotification(bot, item) {
   if (photoPayload && text.length <= 1024) {
     try {
       await waitForMessageSlot();
-      await bot.sendPhoto(item.chatId, photoPayload, opts, {
+      await bot.sendPhoto(item.chatId, photoPayload, { ...opts, caption: text }, {
         filename: 'cover.jpg',
         contentType: 'image/jpeg',
       });
@@ -173,7 +177,7 @@ async function runPersonalNotifications(bot) {
   try {
     items = await fetchPendingNotifications();
   } catch (e) {
-    if (/\s404:/.test(String(e.message))) {
+    if (e.status === 404) {
       personalQueueUnsupported = true;
       console.warn(
         '[PERSONAL] Очередь личных уведомлений пока не поддерживается API (404); проверка отключена до перезапуска.',
@@ -190,7 +194,7 @@ async function runPersonalNotifications(bot) {
   for (const item of items.slice(0, config.maxPersonalNotificationsPerRun)) {
     if (!item.chatId || !item.notificationId) continue;
     try {
-      await sendPersonalNotification(bot, item);
+      if (!await sendPersonalNotification(bot, item)) continue;
       delivered.push(item.notificationId);
       console.log(
         `[PERSONAL] Sent: ${item.titleName} ch.${item.chapterNumber} → ${item.chatId}`,
@@ -213,4 +217,4 @@ async function runPersonalNotifications(bot) {
   }
 }
 
-module.exports = { apiFetch, runPersonalNotifications };
+module.exports = { apiFetch, runPersonalNotifications, sendPersonalNotification };
