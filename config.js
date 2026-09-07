@@ -147,12 +147,12 @@ module.exports = {
   ) * 60 * 60_000,
   /** Публичная ссылка на пост-инструкцию о скрытых главах (необязательно для private-канала). */
   hiddenChaptersGuideUrl: optional('HIDDEN_CHAPTERS_GUIDE_URL'),
-  /** Пост поддержки — не чаще одного раза за указанный интервал (минимум 4 часа). */
+  /** Пост поддержки — не чаще одного раза в сутки. */
   supportPromoIntervalMs: parseBoundedInt(
     process.env.SUPPORT_PROMO_INTERVAL_MINUTES,
-    240,
-    240,
     1440,
+    1440,
+    10080,
   ) * 60_000,
   dailyPromotionPauseMs: parseBoundedInt(process.env.DAILY_PROMOTION_PAUSE_MINUTES, 20, 1, 180) * 60_000,
   postReactionsEnabled: parseBool(process.env.POST_REACTIONS_ENABLED, true),

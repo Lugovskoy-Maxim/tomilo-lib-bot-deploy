@@ -1094,10 +1094,8 @@ function formatLeaderboardChangesMessage(changes, sortLabel) {
 async function run() {
   const state = loadState(config.statePath);
   const remainingPromotionPause = Math.max(0, Number(state.promotionsPauseUntil) - Date.now());
-  if (remainingPromotionPause > 0) {
-    console.log(`Daily promotion pause: ${Math.ceil(remainingPromotionPause / 60_000)} min remaining`);
-    return { pauseMs: remainingPromotionPause };
-  }
+  if (remainingPromotionPause > 0)
+    console.log(`Promotions paused for ${Math.ceil(remainingPromotionPause / 60_000)} min; title updates remain active`);
   let lastProcessed = state.lastProcessedReleaseDate
     ? new Date(state.lastProcessedReleaseDate).getTime()
     : null;
@@ -1213,6 +1211,7 @@ async function run() {
   // Склеиваем их до отправки, чтобы вышел один пост с диапазоном глав.
   const uniqueToPost = coalesceTitleBundles(toPost);
   let publicNotificationAttempts = 0;
+  let sentPublicUpdate = false;
   let deliveryIncomplete = false;
 
   for (const bundle of uniqueToPost) {
@@ -1410,6 +1409,7 @@ async function run() {
         recordAndPersistChapterNotifications(
           state, titleSlug, titleName, newChapters.map((c) => c.chapterNumber),
         );
+        sentPublicUpdate = true;
         console.log(`Synced to both chats: ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(", ")}`);
         await syncMaxTitleMessage(state, key, text, titleSlug, today);
       } catch (error) {
@@ -1508,7 +1508,11 @@ async function run() {
     }
   }
 
-  const promotionPauseMs = await runDailyPromotions(state);
+  // Служебные промо не конкурируют с обновлениями тайтлов: в проходе с
+  // новыми главами и во время промо-паузы они ждут следующего цикла.
+  const promotionPauseMs = sentPublicUpdate || remainingPromotionPause > 0
+    ? 0
+    : await runDailyPromotions(state);
   // Не публикуем недельный дайджест в одной волне с ежедневными промо-постами.
   // Если сегодня уже вышло промо, карточка лидеров спокойно дождётся следующего опроса.
   const monthlyLeadersSent = promotionPauseMs > 0
