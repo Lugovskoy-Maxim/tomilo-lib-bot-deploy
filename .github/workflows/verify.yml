@@ -23,3 +23,6 @@ jobs:
         run: |
           set -euo pipefail
           for file in *.js; do node --check "$file"; done
+
+      - name: Test notification delivery and container updates
+        run: npm test

@@ -5,6 +5,7 @@ const path = require("path");
 const dns = require("dns");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
+const { chapterDestinations, dailyChapterMessages, syncChapterMessages } = require("./chapter-notifications");
 const { setupProfileBot, COMMANDS } = require("./profile-bot");
 const { apiFetch, runPersonalNotifications } = require("./personal-notifications");
 const { runReportNotifications } = require("./report-notifications");
@@ -1212,12 +1213,14 @@ async function run() {
   // Склеиваем их до отправки, чтобы вышел один пост с диапазоном глав.
   const uniqueToPost = coalesceTitleBundles(toPost);
   let publicNotificationAttempts = 0;
+  let deliveryIncomplete = false;
 
   for (const bundle of uniqueToPost) {
     if (
       config.notifyNewChapters &&
       publicNotificationAttempts >= config.maxPublicNotificationsPerRun
     ) {
+      deliveryIncomplete = true;
       console.log(`Public notification limit reached (${config.maxPublicNotificationsPerRun}); remaining updates will be sent later`);
       break;
     }
@@ -1230,8 +1233,8 @@ async function run() {
       newChapters,
     } = bundle;
     const key = titleSlug || titleName;
-    const existing = state.titleMessages[key];
-    const chapterChatId = config.telegramChaptersChatId;
+    const destinations = config.telegramEnabled ? chapterDestinations(config) : [];
+    const dailyMessages = dailyChapterMessages(state, key, today, destinations);
 
     let chaptersToShow;
     let isEdit = false;
@@ -1263,19 +1266,11 @@ async function run() {
       config.notifyNewTitles &&
       !state.announcedTitleImports[key];
 
-    if (
-      config.telegramEnabled &&
-      existing &&
-      String(existing.chatId) === String(chapterChatId) &&
-      existing.date === today &&
-      existing.messageId &&
-      existing.chapters
-    ) {
-      chaptersToShow = mergeChapters(existing.chapters, newChapters);
-      isEdit = true;
-    } else {
-      chaptersToShow = newChapters;
+    chaptersToShow = newChapters;
+    for (const existing of dailyMessages) {
+      chaptersToShow = mergeChapters(existing.chapters || [], chaptersToShow);
     }
+    isEdit = dailyMessages.length > 0;
 
     if (config.notifyNewChapters) {
       publicNotificationAttempts += 1;
@@ -1375,7 +1370,6 @@ async function run() {
       }
       const opts = {
         parse_mode: "HTML",
-        message_thread_id: config.telegramChaptersThreadId,
         ...siteButton(
           config.siteUrl,
           titleSlug,
@@ -1400,276 +1394,29 @@ async function run() {
           maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
         continue;
       }
-      // Первичный анонс также публикуем в старом чате, без ID топика.
-      // Сохраняем отдельную отметку до отправки в топик: если она упадёт,
-      // повторный проход не продублирует уже доставленный анонс в старом чате.
-      if (isNewTitleOnSite && config.telegramEnabled) {
-        const legacyKey = JSON.stringify([config.telegramChatId, key]);
-        state.legacyTitleAnnouncements ||= {};
-        if (!state.legacyTitleAnnouncements[legacyKey]) {
-          const { message_thread_id, ...legacyOpts } = opts;
-          try {
-            const result = await sendPhotoOrMessage({
-              photoPayload,
-              text,
-              opts: legacyOpts,
-              chatId: config.telegramChatId,
-              fileOpts: Buffer.isBuffer(photoPayload)
-                ? { filename: "cover.jpg", contentType: "image/jpeg" }
-                : undefined,
-            });
-            if (!result?.message_id) throw new Error("No message_id returned");
-            state.legacyTitleAnnouncements[legacyKey] = result.message_id;
-            saveState(config.statePath, state);
-          } catch (error) {
-            console.error("New title announcement to old chat failed:", error.message);
-            // Не отмечаем главы обработанными и не продвигаем курсор дальше:
-            // следующий проход повторит доставку анонса.
-            break;
-          }
-        }
-      }
-      if (isEdit && existing) {
-        try {
-          if (existing.hasPhoto) {
-            if (photoPayload) {
-              try {
-                await waitForMessageSlot();
-                await bot.editMessageMedia(
-                  {
-                    type: "photo",
-                    media: photoPayload,
-                    caption: text,
-                    parse_mode: "HTML",
-                  },
-                  {
-                    chat_id: chapterChatId,
-                    message_id: existing.messageId,
-                    reply_markup: opts.reply_markup,
-                  },
-                  { filename: "cover.jpg", contentType: "image/jpeg" },
-                );
-              } catch (mediaError) {
-                // Если Telegram временно не принимает замену медиа, всё равно
-                // обновляем текст и не создаём второй пост.
-                console.warn("Cover update failed; updating caption only:", mediaError.message);
-                await bot.editMessageCaption(text, {
-                  chat_id: chapterChatId,
-                  message_id: existing.messageId,
-                  ...opts,
-                });
-              }
-            } else {
-              await bot.editMessageCaption(text, {
-                chat_id: chapterChatId,
-                message_id: existing.messageId,
-                ...opts,
-              });
-            }
-            state.titleMessages[key] = {
-              messageId: existing.messageId,
-              chatId: chapterChatId,
-              date: today,
-              hasPhoto: true,
-              chapters: chaptersToShow,
-            };
-            if (milestoneNumbers.length > 0) {
-              state.notifiedMilestones[keyCh] = [
-                ...(state.notifiedMilestones[keyCh] || []),
-                ...milestoneNumbers,
-              ];
-            }
-            if (groupMaxReleaseTime > 0)
-              maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-            recordAndPersistChapterNotifications(
-              state,
-              titleSlug,
-              titleName,
-              newChapters.map((c) => c.chapterNumber),
-            );
-            const chNums = chaptersToShow
-              .map((c) => c.chapterNumber)
-              .join(", ");
-            console.log(`Updated: ${titleName} ch.${chNums}`);
-            await syncMaxTitleMessage(state, key, text, titleSlug, today);
-            continue;
-          }
-          if (!existing.hasPhoto && photoPayload) {
-            // Восстанавливаем сообщение с картинкой: отправляем новое с обложкой и удаляем старое
-            const result = await sendPhotoOrMessage({
-              photoPayload,
-              text,
-              opts,
-              chatId: chapterChatId,
-              fileOpts: { filename: "cover.jpg", contentType: "image/jpeg" },
-            });
-            if (result && result.message_id) {
-              try {
-                await bot.deleteMessage(
-                  chapterChatId,
-                  existing.messageId,
-                );
-              } catch (delErr) {
-                if (DEBUG)
-                  console.log(
-                    "Could not delete old message:",
-                    delErr && delErr.message,
-                  );
-              }
-              state.titleMessages[key] = {
-                messageId: result.message_id,
-                chatId: chapterChatId,
-                date: today,
-                hasPhoto: true,
-                chapters: chaptersToShow,
-              };
-              if (milestoneNumbers.length > 0) {
-                state.notifiedMilestones[keyCh] = [
-                  ...(state.notifiedMilestones[keyCh] || []),
-                  ...milestoneNumbers,
-                ];
-              }
-              if (groupMaxReleaseTime > 0)
-                maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-              recordAndPersistChapterNotifications(
-                state,
-                titleSlug,
-                titleName,
-                newChapters.map((c) => c.chapterNumber),
-              );
-              const chNums = chaptersToShow
-                .map((c) => c.chapterNumber)
-                .join(", ");
-              console.log(
-                `Updated (restored with cover): ${titleName} ch.${chNums}`,
-              );
-              await syncMaxTitleMessage(state, key, text, titleSlug, today);
-              continue;
-            }
-          }
-          await bot.editMessageText(text, {
-            chat_id: chapterChatId,
-            message_id: existing.messageId,
-            disable_web_page_preview: true,
-            ...opts,
-          });
-          state.titleMessages[key] = {
-            messageId: existing.messageId,
-            chatId: chapterChatId,
-            date: today,
-            hasPhoto: existing.hasPhoto,
-            chapters: chaptersToShow,
-          };
-          if (milestoneNumbers.length > 0) {
-            state.notifiedMilestones[keyCh] = [
-              ...(state.notifiedMilestones[keyCh] || []),
-              ...milestoneNumbers,
-            ];
-          }
-          if (groupMaxReleaseTime > 0)
-            maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-          recordAndPersistChapterNotifications(
-            state,
-            titleSlug,
-            titleName,
-            newChapters.map((c) => c.chapterNumber),
-          );
-          const chNums = chaptersToShow.map((c) => c.chapterNumber).join(", ");
-          console.log(`Updated: ${titleName} ch.${chNums}`);
-          await syncMaxTitleMessage(state, key, text, titleSlug, today);
-          continue;
-        } catch (editErr) {
-          const errMsg =
-            editErr && typeof editErr === "object" && "message" in editErr
-              ? String(editErr.message)
-              : "";
-          if (DEBUG) console.log("Edit failed, will send new message:", errMsg);
-          isEdit = false;
-        }
-      }
-
       try {
-        const result = await sendPhotoOrMessage({
-          photoPayload,
-          text,
-          opts,
-          chatId: chapterChatId,
-          fileOpts: Buffer.isBuffer(photoPayload)
-            ? { filename: "cover.jpg", contentType: "image/jpeg" }
-            : undefined,
+        await syncChapterMessages({
+          state, key, today, destinations, chapters: chaptersToShow,
+          photoPayload, text, opts, bot, sendPhotoOrMessage, waitForMessageSlot,
+          persist: () => saveState(config.statePath, state),
         });
-        const messageId = result && result.message_id;
-        if (messageId) {
-          state.titleMessages[key] = {
-            messageId,
-            chatId: chapterChatId,
-            date: today,
-            hasPhoto: !!photoPayload,
-            chapters: chaptersToShow,
-          };
-          if (milestoneNumbers.length > 0) {
-            state.notifiedMilestones[keyCh] = [
-              ...(state.notifiedMilestones[keyCh] || []),
-              ...milestoneNumbers,
-            ];
-          }
+        if (milestoneNumbers.length > 0) {
+          state.notifiedMilestones[keyCh] = [
+            ...(state.notifiedMilestones[keyCh] || []), ...milestoneNumbers,
+          ];
         }
         if (groupMaxReleaseTime > 0)
           maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
         recordAndPersistChapterNotifications(
-          state,
-          titleSlug,
-          titleName,
-          newChapters.map((c) => c.chapterNumber),
+          state, titleSlug, titleName, newChapters.map((c) => c.chapterNumber),
         );
-        const chNums = chaptersToShow.map((c) => c.chapterNumber).join(", ");
-        console.log(
-          `Posted: ${titleName} ch.${chNums}${photoPayload ? " (with cover)" : " (no cover)"}`,
-        );
+        console.log(`Synced to both chats: ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(", ")}`);
         await syncMaxTitleMessage(state, key, text, titleSlug, today);
-      } catch (e) {
-        const errMsg =
-          e && typeof e === "object" && "message" in e ? String(e.message) : "";
-        if (
-          photoPayload &&
-          (errMsg.includes("wrong file") || errMsg.includes("failed to get"))
-        ) {
-          try {
-            const result = await sendMessageSafe(text, opts, chapterChatId);
-            const messageId = result && result.message_id;
-            if (messageId) {
-              state.titleMessages[key] = {
-                messageId,
-                chatId: chapterChatId,
-                date: today,
-                hasPhoto: false,
-                chapters: chaptersToShow,
-              };
-              if (milestoneNumbers.length > 0) {
-                state.notifiedMilestones[keyCh] = [
-                  ...(state.notifiedMilestones[keyCh] || []),
-                  ...milestoneNumbers,
-                ];
-              }
-            }
-            if (groupMaxReleaseTime > 0)
-              maxNotified = Math.max(maxNotified || 0, groupMaxReleaseTime);
-            recordAndPersistChapterNotifications(
-              state,
-              titleSlug,
-              titleName,
-              newChapters.map((c) => c.chapterNumber),
-            );
-            console.log(
-              `Posted (no photo): ${titleName} ch.${chaptersToShow.map((c) => c.chapterNumber).join(", ")}`,
-            );
-            await syncMaxTitleMessage(state, key, text, titleSlug, today);
-          } catch (e2) {
-            console.error("Telegram send error:", e2.message);
-          }
-        } else {
-          console.error("Telegram send error:", e.message);
-        }
+      } catch (error) {
+        deliveryIncomplete = true;
+        console.error("Title update delivery failed; will retry:", error.message);
+        // Не продвигаем курсор мимо недоставленного обновления.
+        break;
       }
     } else {
       if (groupMaxReleaseTime > 0)
@@ -1779,7 +1526,7 @@ async function run() {
   }
 
   const lastProcessedStr =
-    maxNotified > 0
+    !deliveryIncomplete && maxNotified > 0
       ? new Date(maxNotified).toISOString()
       : initialLastProcessedStr;
   saveState(config.statePath, {
@@ -1787,6 +1534,7 @@ async function run() {
     lastProcessedReleaseDate: lastProcessedStr || undefined,
     titleMessages: prunedTitleMessages,
     maxTitleMessages: prunedMaxTitleMessages,
+    telegramTitleMessages: Object.fromEntries(Object.entries(state.telegramTitleMessages || {}).filter(([, message]) => message.date === today)),
   });
   const pauseMs = promotionPauseMs > 0
     ? promotionPauseMs

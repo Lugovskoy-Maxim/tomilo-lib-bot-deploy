@@ -8,6 +8,7 @@ function loadState(statePath) {
     return {
       lastProcessedReleaseDate: data.lastProcessedReleaseDate ? new Date(data.lastProcessedReleaseDate) : null,
       titleMessages: data.titleMessages && typeof data.titleMessages === 'object' ? data.titleMessages : {},
+      telegramTitleMessages: data.telegramTitleMessages && typeof data.telegramTitleMessages === 'object' ? data.telegramTitleMessages : {},
       // Сообщения в MAX: { [titleSlug]: { messageId, date } } для обновления анонса в течение дня
       maxTitleMessages: data.maxTitleMessages && typeof data.maxTitleMessages === 'object' ? data.maxTitleMessages : {},
       // Таблица лидеров: [{ slug, name, position, value }] для сравнения позиций
@@ -37,6 +38,7 @@ function loadState(statePath) {
     return {
       lastProcessedReleaseDate: null,
       titleMessages: {},
+      telegramTitleMessages: {},
       maxTitleMessages: {},
       lastLeaderboard: [],
       notifiedMilestones: {},
@@ -68,6 +70,7 @@ function saveState(statePath, state) {
   const toSave = {
     lastProcessedReleaseDate: state.lastProcessedReleaseDate,
     titleMessages: state.titleMessages,
+    telegramTitleMessages: state.telegramTitleMessages,
     maxTitleMessages: state.maxTitleMessages,
     lastLeaderboard: state.lastLeaderboard,
     notifiedMilestones: state.notifiedMilestones,
