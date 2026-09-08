@@ -56,11 +56,14 @@ async function syncChapterMessages({ state, key, today, destinations, chapters,
       const editOpts = { ...sendOpts, chat_id: target.chatId, message_id: existing.messageId };
       try {
         await waitForMessageSlot();
-        if (photo) {
+        if (photo && typeof photo === 'string') {
           result = await bot.editMessageMedia(
             { type: 'photo', media: photo, caption: text, parse_mode: commonOpts.parse_mode },
             editOpts, { filename: 'cover.jpg', contentType: 'image/jpeg' });
         } else if (existing.hasPhoto && text.length <= 1024) {
+          // Telegram editMessageMedia requires media to be a string (file_id/URL).
+          // Generated covers are Buffers, so keep the existing photo and safely
+          // update its caption instead of sending an invalid InputMedia payload.
           result = await bot.editMessageCaption(text, editOpts);
           hasPhoto = true;
         } else if (!existing.hasPhoto) {

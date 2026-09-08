@@ -36,11 +36,11 @@ test('same message, cover and buttons go to both chats; thread only in second', 
   assert.equal(a.opts.message_thread_id, undefined); assert.equal(b.opts.message_thread_id, 44);
 });
 
-test('later chapters edit the daily message in both chats without new posts', async () => {
+test('later chapters update captions of generated-cover posts in both chats', async () => {
   const { args, calls, state } = fixture();
   await syncChapterMessages(args); calls.length = 0;
   await syncChapterMessages({ ...args, text: 'Chapters 1–2', chapters: [{ chapterNumber: 1 }, { chapterNumber: 2 }] });
-  assert.deepEqual(calls.map((call) => call[0]), ['media', 'media']);
+  assert.deepEqual(calls.map((call) => call[0]), ['caption', 'caption']);
   assert.deepEqual(calls.map((call) => call[2].message_id), [11, 12]);
   assert.equal(dailyChapterMessages(state, 'title', args.today, destinations).length, 2);
 });
@@ -68,14 +68,14 @@ test('old topic state is edited and primary chat receives a copy', async () => {
   const { args, calls, state } = fixture();
   state.titleMessages.title = { chatId: '-2', messageId: 9, date: args.today, hasPhoto: true, chapters: [{ chapterNumber: 1 }] };
   await syncChapterMessages(args);
-  assert.deepEqual(calls.map((call) => call[0]), ['send', 'media']);
+  assert.deepEqual(calls.map((call) => call[0]), ['send', 'caption']);
   assert.equal(calls[1][2].message_id, 9);
 });
 
-test('transient edit errors do not create duplicate posts', async () => {
+test('transient caption edit errors do not create duplicate posts', async () => {
   const { args, calls } = fixture();
   await syncChapterMessages(args); calls.length = 0;
-  args.bot.editMessageMedia = async () => { throw new Error('429 retry later'); };
+  args.bot.editMessageCaption = async () => { throw new Error('429 retry later'); };
   await assert.rejects(syncChapterMessages({ ...args, text: 'Chapter 2' }), /429/);
   assert.equal(calls.length, 0);
 });
@@ -84,7 +84,7 @@ test('not modified is successful; identical retries do nothing; next day posts a
   const { args, calls } = fixture();
   await syncChapterMessages(args); calls.length = 0;
   await syncChapterMessages(args); assert.equal(calls.length, 0);
-  args.bot.editMessageMedia = async () => { throw new Error('Bad Request: message is not modified'); };
+  args.bot.editMessageCaption = async () => { throw new Error('Bad Request: message is not modified'); };
   await syncChapterMessages({ ...args, text: 'Chapter 2' });
   assert.equal(calls.length, 0);
   await syncChapterMessages({ ...args, today: '2026-09-08' });
