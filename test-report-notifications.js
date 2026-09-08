@@ -1,3 +1,7 @@
+process.env.TELEGRAM_ENABLED = 'true';
+process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+process.env.TELEGRAM_CHAT_ID = '-100123';
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { runReportNotifications } = require('./report-notifications');
