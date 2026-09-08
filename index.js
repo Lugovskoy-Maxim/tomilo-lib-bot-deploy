@@ -1130,8 +1130,9 @@ async function run() {
     if (!Number.isFinite(activityTime) || activityTime <= 0) continue;
     if (activityTime > 0) maxSeen = Math.max(maxSeen || 0, activityTime);
     if (isFirstUpdatesScan) continue;
-    if (lastProcessed != null && activityTime <= lastProcessed) continue;
-
+    // Не отбрасываем строку только из-за временного курсора. API может
+    // пересортировать события или вернуть обновление с прежним lastUpdate.
+    // Фактическую доставку определяют сохранённые пары «тайтл + глава» ниже.
     const numsRaw =
       Array.isArray(row.chapters) && row.chapters.length > 0
         ? row.chapters
