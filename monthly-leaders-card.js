@@ -25,10 +25,11 @@ class MonthlyLeadersCard {
   }
 
   async generate(leaders, options = {}) {
-    const { width, height, fontFamily } = this.options;
+    const { width, fontFamily } = this.options;
+    const cards = Array.isArray(leaders) ? leaders.slice(0, 5) : [];
+    const height = Math.max(900, 402 + cards.length * 276 + 120);
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
-    const cards = Array.isArray(leaders) ? leaders.slice(0, 5) : [];
     const period = options.period || 'ЛИДЕРЫ МЕСЯЦА';
 
     const background = ctx.createLinearGradient(0, 0, width, height);
@@ -38,8 +39,8 @@ class MonthlyLeadersCard {
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, width, height);
 
-    this.drawGlow(ctx, 110, 120, 560, 'rgba(255, 95, 87, 0.20)');
-    this.drawGlow(ctx, width - 80, height * 0.4, 700, 'rgba(151, 137, 255, 0.18)');
+    this.drawGlow(ctx, 110, 120, 560, 'rgba(255, 95, 87, 0.20)', height);
+    this.drawGlow(ctx, width - 80, height * 0.4, 700, 'rgba(151, 137, 255, 0.18)', height);
     this.drawHalftone(ctx, width, height);
 
     ctx.fillStyle = 'rgba(255,255,255,0.68)';
@@ -49,11 +50,11 @@ class MonthlyLeadersCard {
     ctx.letterSpacing = '0px';
     ctx.fillStyle = '#f6f7fb';
     ctx.font = `800 74px "${fontFamily}"`;
-    ctx.fillText('Итоги месяца', 74, 198);
-    ctx.fillText('в TOMILO LIB', 74, 278);
+    ctx.fillText('Лидеры', 74, 198);
+    ctx.fillText('TOMILO LIB', 74, 278);
     ctx.fillStyle = 'rgba(246,247,251,0.66)';
     ctx.font = `500 29px "${fontFamily}"`;
-    ctx.fillText('Пять достижений, которые сделали месяц ярче', 78, 332);
+    ctx.fillText('Достижения, которые сделали период ярче', 78, 332);
 
     const loadedVisuals = await Promise.all(
       cards.map(async (leader) => ({
@@ -66,20 +67,12 @@ class MonthlyLeadersCard {
         ),
       })),
     );
-    const defaults = [
-      { metric: 'Время чтения', valueLabel: '0 мин.', accent: '#ff6f67' },
-      { metric: 'Серия дней', valueLabel: '0 дней', accent: '#e6ba64' },
-      { metric: 'Прочитано глав', valueLabel: '0 глав', accent: '#a690ff' },
-      { metric: 'Оценок за месяц', valueLabel: '0 оценок', accent: '#6dd9c3' },
-      { metric: 'Комментариев за месяц', valueLabel: '0 комментариев', accent: '#79a8ff' },
-    ];
-    defaults.forEach((fallback, index) => {
+    cards.forEach((leader, index) => {
       this.drawLeaderCard(
         ctx,
         {
-          ...fallback,
-          ...(cards[index] || {}),
-          username: cards[index]?.username || 'Лидер сообщества',
+          ...leader,
+          username: leader?.username || 'Читатель сообщества',
         },
         loadedVisuals[index],
         74,
@@ -185,12 +178,12 @@ class MonthlyLeadersCard {
     }
   }
 
-  drawGlow(ctx, x, y, radius, color) {
+  drawGlow(ctx, x, y, radius, color, height = this.options.height) {
     const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
     glow.addColorStop(0, color);
     glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, this.options.width, this.options.height);
+    ctx.fillRect(0, 0, this.options.width, height);
   }
 
   drawHalftone(ctx, width, height) {

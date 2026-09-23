@@ -73,17 +73,19 @@ MAX требует верифицированный профиль органи�
 модерацию бота. Затем:
 
 ```sh
-cp .env.example .env.max
-# В .env.max: TELEGRAM_ENABLED=false, MAX_ENABLED=true,
+cp .env.example .env
+# В .env: TELEGRAM_ENABLED=false, MAX_ENABLED=true,
 # MAX_BOT_TOKEN=..., MAX_CHAT_ID=..., API_URL=..., SITE_URL=...
-mkdir -p certs
-# Положите корневой и выпускающий сертификаты Минцифры в certs/mincifry.pem
 docker compose -f compose.max.yaml up -d --build
 ```
 
 `compose.max.yaml` не монтирует `/dev/net/tun`, не выдаёт `NET_ADMIN` и не
-запускает WireGuard. Сертификат Минцифры нужен для TLS-доверия к API MAX, это
-не VPN. Личные уведомления о закладках пока остаются Telegram-сценарием:
+запускает WireGuard. При первом старте контейнер скачает официальный корневой
+сертификат Минцифры, проверит его закреплённый SHA-256 и настроит TLS для Node.js.
+Папку `certs` вручную создавать не нужно. MAX требует HTTPS и сертификат от
+доверенного центра для входящего webhook; этот бот отправляет публикации через
+API MAX и не принимает webhook, поэтому отдельный домен и webhook-сервер не нужны.
+Личные уведомления о закладках пока остаются Telegram-сценарием:
 для MAX потребуется отдельная привязка аккаунта сайта к `user_id` MAX на
 сервере.
 
@@ -181,17 +183,14 @@ docker compose logs -f bot
 редактируется в MAX. Без этих переменных интеграция отключена и на Telegram
 не влияет.
 
-API MAX использует сертификаты Минцифры. Скачайте корневой и выпускающий
-сертификаты из официальной инструкции MAX, сохраните их в одном PEM-файле
-`certs/mincifry.pem` и добавьте в `.env`:
+По умолчанию контейнер устанавливает комплект Russian Trusted Root CA и
+выпускающих сертификатов Минцифры с проверкой каждого SHA-256. Если CA-файл
+нужно хранить в другом месте, задайте путь через `MAX_CA_CERT_PATH`.
 
-```env
-NODE_EXTRA_CA_CERTS=/certs/mincifry.pem
-```
-
-Папка `certs` монтируется контейнеру только на чтение и не попадает в образ.
-Без этих сертификатов Node.js обычно не сможет установить доверенное TLS-
-соединение с `platform-api2.max.ru`.
+В карточке лидеров можно выбирать период `LEADERS_PERIOD=week|month|all` и
+набор категорий в `LEADERS_CATEGORIES`: `level`, `chaptersRead`, `ratings`,
+`comments`, `streak`, `likesReceived`, `developmentHelp`, `balance`. По умолчанию
+публикуются главы, оценки, комментарии, серия активности и полученные лайки.
 
 Новые тайтлы и обновления глав отправляются одинаковыми сообщениями в старый чат `TELEGRAM_CHAT_ID` и в топик
 `TELEGRAM_CHAPTERS_THREAD_ID` группы `TELEGRAM_CHAPTERS_CHAT_ID`

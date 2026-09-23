@@ -7,6 +7,46 @@ wg_default_gateway=""
 wg_default_device=""
 wg_bypass_ips=""
 
+# MAX использует Russian Trusted Root CA и выпускающий CA Минцифры. Загружаем
+# официальный комплект и проверяем отпечатки до включения доверия Node.js.
+if [ "${MAX_ENABLED:-false}" = "true" ] || [ "${MAX_ENABLED:-false}" = "1" ]; then
+  ca_file="${MAX_CA_CERT_PATH:-/data/mincifry.pem}"
+  if [ ! -s "$ca_file" ]; then
+    mkdir -p "$(dirname "$ca_file")"
+    ca_tmp="${ca_file}.tmp"
+    : > "$ca_tmp"
+    download_and_verify_ca() {
+      ca_url="$1"
+      expected_fingerprint="$2"
+      ca_part="${ca_file}.part"
+      curl --fail --location --silent --show-error "$ca_url" -o "$ca_part"
+      actual_fingerprint=$(openssl x509 -in "$ca_part" -noout -fingerprint -sha256 \
+        | sed 's/.*=//; s/://g' | tr '[:lower:]' '[:upper:]')
+      if [ "$actual_fingerprint" != "$expected_fingerprint" ]; then
+        rm -f "$ca_part" "$ca_tmp"
+        echo "Minцифры certificate fingerprint mismatch; refusing to install it." >&2
+        exit 1
+      fi
+      cat "$ca_part" >> "$ca_tmp"
+      printf '\n' >> "$ca_tmp"
+      rm -f "$ca_part"
+    }
+    echo "Installing the official Russian Trusted CA bundle for MAX…"
+    download_and_verify_ca \
+      https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt \
+      D26D2D0231B7C39F92CC738512BA54103519E4405D68B5BD703E9788CA8ECF31
+    download_and_verify_ca \
+      https://gu-st.ru/content/lending/russian_trusted_sub_ca_pem.crt \
+      BBBDE2103E790B999EC62BD03CF625A5A2E7C316E10AFE6A490EEDEAD8B3FD9B
+    download_and_verify_ca \
+      https://gu-st.ru/content/lending/russian_trusted_sub_ca_2024_pem.crt \
+      2155785036C900DBB5F1BB2A1569C80C55595BD6BF94867A29BBDDBC7D88A3F2
+    mv "$ca_tmp" "$ca_file"
+    chmod 0644 "$ca_file"
+  fi
+  export NODE_EXTRA_CA_CERTS="$ca_file"
+fi
+
 # Named volume создаётся Docker от root. Бот работает от node, поэтому выдаём
 # ему доступ до запуска приложения; это сохраняет state и защиту от дублей.
 if [ "$(id -u)" = "0" ] && [ -d /data ]; then
@@ -34,6 +74,7 @@ if [ "${WG_ENABLED:-false}" = "true" ] || [ "${WG_ENABLED:-false}" = "1" ]; then
   # через VPN не исключаем.
   for wg_bypass_host in \
     tomilo-lib.ru cdn.tomilo-lib.ru \
+    platform-api2.max.ru \
     ${WG_BYPASS_HOSTS:-}; do
     case "$wg_bypass_host" in
       s3.regru.cloud|tomilolib.s3.regru.cloud)

@@ -326,7 +326,9 @@ async function runDailyPromotions(state) {
   return 0;
 }
 
-function monthLeadersLabel(now = new Date()) {
+function monthLeadersLabel(now = new Date(), period = config.leadersPeriod) {
+  if (period === 'week') return 'ЛИДЕРЫ НЕДЕЛИ';
+  if (period === 'all') return 'ЛИДЕРЫ · ВСЁ ВРЕМЯ';
   const parts = new Intl.DateTimeFormat('ru-RU', {
     timeZone: 'Europe/Moscow', month: 'long', year: 'numeric',
   }).formatToParts(now);
@@ -346,16 +348,23 @@ function compactValue(value, suffix) {
 }
 
 async function fetchMonthlyLeaders() {
-  const categories = [
-    { category: 'readingTime', metric: 'Время чтения', accent: '#ff6f67', key: 'readingTimeMinutes', suffix: 'мин.' },
-    { category: 'streak', metric: 'Серия дней', accent: '#e6ba64', key: 'currentStreak', suffix: 'дней' },
-    { category: 'chaptersRead', metric: 'Прочитано глав', accent: '#a690ff', key: 'chaptersRead', suffix: 'глав' },
-    { category: 'ratings', metric: 'Оценок за месяц', accent: '#6dd9c3', key: 'ratingsCount', suffix: 'оценок' },
-    { category: 'comments', metric: 'Комментариев за месяц', accent: '#79a8ff', key: 'commentsCount', suffix: 'комментариев' },
-  ];
+  const categoryOptions = {
+    level: { metric: 'Уровень и опыт', key: 'level', suffix: 'ур.' , accent: '#e6ba64' },
+    chaptersRead: { metric: 'Прочитано глав', key: 'chaptersRead', suffix: 'глав', accent: '#a690ff' },
+    ratings: { metric: 'Оценки тайтлов', key: 'ratingsCount', suffix: 'оценок', accent: '#6dd9c3' },
+    comments: { metric: 'Комментарии', key: 'commentsCount', suffix: 'комментариев', accent: '#79a8ff' },
+    streak: { metric: 'Серия активности', key: 'currentStreak', suffix: 'дней подряд', accent: '#ff6f67' },
+    likesReceived: { metric: 'Получено лайков', key: 'likesReceivedCount', suffix: 'лайков', accent: '#e98ab2' },
+    developmentHelp: { metric: 'Помощь проекту', key: 'charactersAcceptedCount', suffix: 'персонажей', accent: '#62b8ff' },
+    balance: { metric: 'Баланс', key: 'balance', suffix: 'монет', accent: '#ffb84d' },
+  };
+  const categories = config.leadersCategories.map((category) => ({
+    category,
+    ...categoryOptions[category],
+  }));
   const results = await Promise.all(categories.map(async (item) => {
     const response = await fetch(
-      `${config.apiUrl}/users/leaderboard?category=${item.category}&period=month&limit=1`,
+      `${config.apiUrl}/users/leaderboard?category=${item.category}&period=${config.leadersPeriod}&limit=1`,
     );
     if (!response.ok) throw new Error(`Monthly leaderboard ${item.category}: HTTP ${response.status}`);
     const payload = await response.json();
@@ -369,7 +378,9 @@ async function fetchMonthlyLeaders() {
         avatar: absoluteMediaUrl(user.equippedDecorations?.avatar),
         frame: absoluteMediaUrl(user.equippedDecorations?.frame),
       },
-      valueLabel: compactValue(user[item.key], item.suffix),
+      valueLabel: item.category === 'level'
+        ? `ур. ${Number(user.level || 1)} · ${compactValue(user.experience, 'XP')}`
+        : compactValue(user[item.key], item.suffix),
     };
   }));
   return results.filter(Boolean);
@@ -383,15 +394,15 @@ async function runMonthlyLeadersPost(state) {
   );
   if (waitMs > 0) return false;
   const leaders = await fetchMonthlyLeaders();
-  if (leaders.length < 3) {
-    console.warn(`Monthly leaders skipped: only ${leaders.length} non-empty categories`);
+  if (leaders.length < 1) {
+    console.warn('Leaders post skipped: no non-empty leaderboard categories');
     return false;
   }
-  const image = await monthlyLeadersCard.generate(leaders, { period: monthLeadersLabel() });
+  const image = await monthlyLeadersCard.generate(leaders, { period: monthLeadersLabel(new Date(), config.leadersPeriod) });
   const text = [
-    '<b>🏆 Лидеры месяца TOMILO LIB</b>',
+    `<b>🏆 ${escapeHtml(monthLeadersLabel(new Date(), config.leadersPeriod))} TOMILO LIB</b>`,
     '',
-    'Пять рекордов сообщества — спасибо, что читаете вместе с нами.',
+    `Рейтинг сообщества за период: ${escapeHtml(config.leadersPeriod)}. Спасибо, что читаете вместе с нами.`,
   ].join('\n');
   const result = await sendPhotoOrMessage({
     photoPayload: image,

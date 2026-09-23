@@ -29,6 +29,15 @@ const parseBoundedInt = (v, fallback, min, max) => {
   return Math.min(max, Math.max(min, parsed));
 };
 
+const leaderboardCategories = new Set([
+  'level', 'chaptersRead', 'ratings', 'comments', 'streak',
+  'likesReceived', 'developmentHelp', 'balance',
+]);
+const configuredLeaderboardCategories = optional('LEADERS_CATEGORIES')
+  .split(/[ ,]+/)
+  .map((value) => value.trim())
+  .filter((value, index, values) => leaderboardCategories.has(value) && values.indexOf(value) === index);
+
 const MOSCOW_TIME = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Moscow',
   hour: '2-digit',
@@ -131,6 +140,10 @@ module.exports = {
   notifyDailySupport: parseBool(process.env.NOTIFY_DAILY_SUPPORT, true),
   /** Еженедельная карточка с пятью лидерами; отключается без изменения кода. */
   notifyMonthlyLeaders: parseBool(process.env.NOTIFY_MONTHLY_LEADERS, true),
+  leadersPeriod: ['week', 'month', 'all'].includes(optional('LEADERS_PERIOD'))
+    ? optional('LEADERS_PERIOD') : 'month',
+  leadersCategories: configuredLeaderboardCategories.length
+    ? configuredLeaderboardCategories : ['chaptersRead', 'ratings', 'comments', 'streak', 'likesReceived'],
   monthlyLeadersIntervalMs: parseBoundedInt(
     process.env.MONTHLY_LEADERS_INTERVAL_HOURS,
     168,

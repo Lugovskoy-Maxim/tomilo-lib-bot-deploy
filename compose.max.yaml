@@ -3,14 +3,11 @@ services:
     build: .
     image: tomilo-lib-max-bot:local
     restart: unless-stopped
-    env_file: .env.max
+    env_file: .env
     environment:
       STATE_PATH: /data/bot-state.json
-      # Официальный API MAX использует сертификат Минцифры. Это не VPN.
-      NODE_EXTRA_CA_CERTS: /certs/mincifry.pem
     volumes:
       - max-bot-state:/data
-      - ./certs:/certs:ro
     cap_drop:
       - ALL
     pids_limit: 80

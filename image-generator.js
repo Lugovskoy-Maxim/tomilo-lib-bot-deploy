@@ -166,6 +166,21 @@ class ImageGenerator {
       ctx.fillText(meta, 58, 592);
     }
 
+    // Явный CTA превращает карточку анонса в переход на чтение; ссылка
+    // остаётся в подписи поста, а здесь работает как короткий визуальный якорь.
+    const cta = 'ЧИТАТЬ СЕЙЧАС  ↗';
+    ctx.font = `700 22px "${fontFamily}"`;
+    const ctaWidth = ctx.measureText(cta).width + 42;
+    this.drawRoundedRect(ctx, coverX + 28, height - 74, ctaWidth, 48, 16);
+    ctx.fillStyle = 'rgba(8, 12, 24, 0.82)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.42)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText(cta, coverX + 49, height - 43);
+
     return canvas.toBuffer('image/jpeg', { quality: 0.9 });
   }
 
@@ -316,17 +331,12 @@ class ImageGenerator {
     ctx.fillStyle = primaryColor;
     ctx.fillText(siteUrl, logoX + logoSize + 20, logoY + 55);
 
-    // QR код или дополнительная информация
-    const qrX = width * 0.7;
-    const qrY = footerY + 10;
-    const qrSize = 60;
-
-    // Простой QR-код (заглушка)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(qrX, qrY, qrSize, qrSize);
-    ctx.fillStyle = '#000000';
-    ctx.font = `bold 12px ${fontFamily}`;
-    ctx.fillText('QR', qrX + qrSize/2 - 10, qrY + qrSize/2 + 5);
+    // Не имитируем QR-заглушку: даём читателю реальный адрес сайта.
+    ctx.textAlign = 'right';
+    ctx.font = `600 20px "${fontFamily}"`;
+    ctx.fillStyle = secondaryColor;
+    ctx.fillText('ОТКРЫТЬ БИБЛИОТЕКУ ↗', width * 0.9, logoY + 32);
+    ctx.textAlign = 'left';
   }
 
   /**
@@ -339,63 +349,72 @@ class ImageGenerator {
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
 
-    // Градиентный фон
+    // Контрастная рекламная композиция: одна ценность, три свойства,
+    // призыв к действию. Не подставляем выдуманную статистику.
     const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#1a1a2e');
-    gradient.addColorStop(1, '#16213e');
+    gradient.addColorStop(0, '#080b16');
+    gradient.addColorStop(0.58, '#171538');
+    gradient.addColorStop(1, '#26164b');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
 
-    // Заголовок
-    ctx.font = `bold 64px ${fontFamily}`;
+    const glow = ctx.createRadialGradient(940, 130, 10, 940, 130, 500);
+    glow.addColorStop(0, 'rgba(124, 92, 255, 0.35)');
+    glow.addColorStop(1, 'rgba(124, 92, 255, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+    ctx.textAlign = 'left';
+    ctx.font = `600 24px "${fontFamily}"`;
+    ctx.fillStyle = '#b8aaff';
+    ctx.fillText('TOMILO LIB  ·  ЧИТАЙТЕ ОНЛАЙН', 76, 82);
+    ctx.font = `800 67px "${fontFamily}"`;
     ctx.fillStyle = secondaryColor;
-    ctx.textAlign = 'center';
-    ctx.fillText('Tomilo Lib', width / 2, height * 0.2);
+    ctx.fillText('Найдите свою', 72, 190);
+    ctx.fillText('следующую историю', 72, 268);
+    ctx.font = `500 27px "${fontFamily}"`;
+    ctx.fillStyle = 'rgba(248,250,252,0.76)';
+    ctx.fillText('Манга, манхва и маньхуа — в одной библиотеке', 78, 328);
 
-    // Подзаголовок
-    ctx.font = `28px ${fontFamily}`;
-    ctx.fillStyle = primaryColor;
-    ctx.fillText('Крупнейшая библиотека манги, манхвы и маньхуа', width / 2, height * 0.3);
-
-    // Статистика
-    const statsY = height * 0.45;
-    const statSpacing = width / 4;
-
-    const statistics = [
-      { label: 'Тайтлов', value: stats.titlesCount || '5000+', icon: '📚' },
-      { label: 'Глав', value: stats.chaptersCount || '100000+', icon: '📖' },
-      { label: 'Пользователей', value: stats.usersCount || '10000+', icon: '👥' },
-      { label: 'Ежедневно', value: stats.dailyViews || '50000+', icon: '🔥' }
-    ];
-
-    statistics.forEach((stat, index) => {
-      const x = statSpacing * (index + 0.5);
-      
-      ctx.font = `bold 48px ${fontFamily}`;
-      ctx.fillStyle = accentColor;
-      ctx.fillText(stat.icon, x - 30, statsY);
-      
-      ctx.font = `bold 36px ${fontFamily}`;
-      ctx.fillStyle = secondaryColor;
-      ctx.fillText(stat.value, x + 20, statsY);
-      
-      ctx.font = `20px ${fontFamily}`;
-      ctx.fillStyle = primaryColor;
-      ctx.fillText(stat.label, x, statsY + 50);
+    const features = ['Новые главы', 'Удобная читалка', 'Закладки и прогресс'];
+    ctx.font = `600 21px "${fontFamily}"`;
+    features.forEach((label, index) => {
+      const x = 78 + index * 300;
+      this.drawRoundedRect(ctx, x, 374, 270, 54, 18);
+      ctx.fillStyle = 'rgba(255,255,255,0.09)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+      ctx.stroke();
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(label, x + 18, 408);
     });
 
-    // Призыв к действию
-    ctx.font = `bold 32px ${fontFamily}`;
-    ctx.fillStyle = secondaryColor;
-    ctx.fillText('Присоединяйтесь к нашему сообществу!', width / 2, height * 0.7);
+    const suppliedStats = [
+      ['Тайтлов', stats.titlesCount],
+      ['Глав', stats.chaptersCount],
+      ['Читателей', stats.usersCount],
+    ].filter(([, value]) => value != null && value !== '');
+    if (suppliedStats.length) {
+      ctx.font = `700 23px "${fontFamily}"`;
+      suppliedStats.forEach(([label, value], index) => {
+        const x = 82 + index * 230;
+        ctx.fillStyle = '#d9d1ff';
+        ctx.fillText(String(value), x, 488);
+        ctx.font = `500 16px "${fontFamily}"`;
+        ctx.fillStyle = 'rgba(248,250,252,0.62)';
+        ctx.fillText(label, x, 514);
+        ctx.font = `700 23px "${fontFamily}"`;
+      });
+    }
 
-    // URL сайта
-    ctx.font = `28px ${fontFamily}`;
-    ctx.fillStyle = primaryColor;
-    ctx.fillText('https://tomilo-lib.ru', width / 2, height * 0.8);
-
-    // Нижняя часть с логотипом
-    await this.drawSiteFooter(ctx, width, height);
+    this.drawRoundedRect(ctx, 78, 542, 328, 62, 20);
+    ctx.fillStyle = accentColor;
+    ctx.fill();
+    ctx.font = `700 24px "${fontFamily}"`;
+    ctx.fillStyle = '#090b14';
+    ctx.fillText('ОТКРЫТЬ БИБЛИОТЕКУ  ↗', 101, 581);
+    ctx.font = `500 21px "${fontFamily}"`;
+    ctx.fillStyle = 'rgba(248,250,252,0.66)';
+    ctx.fillText(this.options.siteUrl.replace(/^https?:\/\//, ''), 810, 585);
 
     return canvas.toBuffer('image/jpeg', { quality: 0.9 });
   }

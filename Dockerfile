@@ -20,6 +20,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       tini wireguard-tools iproute2 iptables procps openresolv \
       libcairo2 libpango-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 \
+      ca-certificates curl openssl \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data /etc/wireguard
 COPY --from=build /app/node_modules ./node_modules
