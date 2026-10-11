@@ -10,6 +10,30 @@ const BOARDS = ['chaptersRead:week', 'comments:week', 'ratings:week', 'chaptersR
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const num = (n) => Number(n || 0).toLocaleString('ru-RU');
 const userId = (u) => String(u?._id || u?.id || '');
+function plural(value, forms) {
+  const n = Math.abs(Number(value)) % 100;
+  return forms[n > 10 && n < 20 ? 2 : n % 10 === 1 ? 0 : n % 10 >= 2 && n % 10 <= 4 ? 1 : 2];
+}
+function resultLabel(value, category) {
+  const forms = { chaptersRead: ['глава', 'главы', 'глав'], comments: ['комментарий', 'комментария', 'комментариев'],
+    ratings: ['оценка', 'оценки', 'оценок'], streak: ['день', 'дня', 'дней'], likesReceived: ['лайк', 'лайка', 'лайков'] };
+  const key = category.split(':')[0];
+  return `${num(value)} ${plural(value, forms[key] || ['результат', 'результата', 'результатов'])}${key === 'streak' ? ' подряд' : ''}`;
+}
+
+function storyCopy(story) {
+  const category = story.category?.split(':')[0];
+  const categoryNames = { chaptersRead: 'чтения', comments: 'комментариев', ratings: 'оценок' };
+  if (story.kind === 'rise') return { subtitle: `Недельный рейтинг ${categoryNames[category] || 'сообщества'}`, footer: 'Следующая вершина уже ближе' };
+  if (story.kind === 'reader') return { subtitle: 'Со вчерашней сводки', footer: 'Какая история увлекла вас сегодня?' };
+  if (story.kind === 'vote') return { subtitle: 'Выбираем новое для магазина', footer: 'Ваш голос помогает выбрать' };
+  if (story.kind === 'quote') return { subtitle: 'Из обсуждений этой недели', footer: 'Присоединяйтесь к разговору' };
+  if (story.kind === 'podium') return { subtitle: `За 7 дней · ${story.metric.toLowerCase()}`, footer: 'Кто окажется здесь на следующей неделе?' };
+  if (story.kind === 'milestone') return { subtitle: category === 'streak' ? 'Каждый день вместе с TOMILO' : 'Новая отметка в истории чтения', footer: 'Поздравляем с новым рубежом!' };
+  if (story.kind === 'summary') return { subtitle: 'Итоги недельных топов', footer: 'Какой тайтл стал вашим открытием недели?' };
+  return { subtitle: story.category?.endsWith(':week') ? 'Результат за последние 7 дней' : 'Личный результат',
+    footer: category === 'streak' ? 'День за днём, история за историей' : 'Знакомьтесь с участниками сообщества' };
+}
 
 function moscowClock(now) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
@@ -146,8 +170,8 @@ function selectStory(data, history, featured, now) {
     const users = categories.map(c => eligible(`${c}:week`).find(u => u[METRICS[c].key] > 0)).filter(Boolean)
       .filter((u, i, all) => all.findIndex(other => userId(other) === userId(u)) === i).slice(0, 3);
     return { kind: 'summary', title: 'Неделя в цифрах', date, accent: '#e6ba64', users, stats,
-      period: 'Последние 7 дней', metric: 'Участники публичных рейтингов',
-      note: 'Сумма результатов до 100 участников каждой категории. Не общая статистика сайта.' };
+      period: 'Активность участников недельных топов', metric: 'Участники недельных рейтингов',
+      note: 'Читаем, обсуждаем и делимся впечатлениями.' };
   }
   // No fabricated nomination: a factual metric spotlight replaces an unavailable event.
   const rotation = (weeklyIndex + weekday) % 3;
@@ -160,17 +184,23 @@ function selectStory(data, history, featured, now) {
 }
 
 function storyCaption(story) {
-  const lines = [`<b>${esc(story.title)} · TOMILO LIB</b>`, '', esc(story.period)];
+  const copy = storyCopy(story);
+  const lines = [`<b>${esc(story.title)} · TOMILO LIB</b>`, '', esc(copy.subtitle)];
   if (story.kind === 'vote') {
-    lines.push('', ...story.items.map(s => `${esc(String(s.name).slice(0, 40))} · ${num(s.votesCount)} голосов`), '', 'Выберите декорацию или карточку на сайте. Голоса Telegram и MAX учитываются вместе.');
+    lines.push('', 'Что хотите увидеть в магазине?', '', ...story.items.map(s =>
+      `${esc(String(s.name).slice(0, 40))}: ${num(s.votesCount)} ${plural(s.votesCount, ['голос', 'голоса', 'голосов'])}`),
+      '', 'Посмотрите предложения и проголосуйте по кнопке ниже.');
   } else if (story.kind === 'summary') {
-    lines.push('', ...story.stats.map(s => `${esc(s.label)}: ${num(s.value)}`), '', esc(story.note));
+    lines.push('', ...story.stats.map(s => `${esc(s.label)}: <b>${num(s.value)}</b>`), '', esc(copy.footer));
   } else if (story.kind === 'podium') {
-    lines.push('', esc(story.metric), ...story.users.map(u => `№${u.rank} ${esc(String(u.username).slice(0, 30))} · ${num(u[METRICS[story.category.split(':')[0]].key])} ${esc(story.unit)}`));
+    lines.push('', ...story.users.map(u => `№${u.rank} <b>${esc(String(u.username).slice(0, 30))}</b>: ${resultLabel(u[METRICS[story.category.split(':')[0]].key], story.category)}`), '', esc(copy.footer));
   } else {
-    lines.push('', `<b>${esc(String(story.users[0].username).slice(0, 30))}</b>`,
-      story.kind === 'rise' ? `№${story.fromRank} → №${story.toRank} · +${num(story.value)} позиций` : `${num(story.value)} ${esc(story.unit)}`, esc(story.metric));
-    if (story.quote) lines.push('', `«${esc(story.quote.slice(0, 100))}${story.quote.length > 100 ? '…' : ''}»`);
+    lines.push('', `<b>${esc(String(story.users[0].username).slice(0, 30))}</b>`);
+    if (story.kind === 'rise') lines.push(`С ${story.fromRank}-го на ${story.toRank}-е место. +${num(story.value)} ${plural(story.value, ['позиция', 'позиции', 'позиций'])} за неделю!`);
+    else if (story.quote) lines.push('', `«${esc(story.quote.slice(0, 100))}${story.quote.length > 100 ? '…' : ''}»`);
+    else lines.push(resultLabel(story.value, story.category));
+    if (story.kind === 'spotlight' || story.kind === 'voice') lines.push(`Место в категории: №${story.users[0].rank}`);
+    lines.push('', esc(copy.footer));
   }
   return lines.join('\n');
 }
@@ -238,4 +268,4 @@ async function runChronicle({ state, config, now = new Date(), save, fetcher = f
   return post.complete;
 }
 
-module.exports = { METRICS, moscowClock, fetchChronicleData, selectStory, storyCaption, runChronicle };
+module.exports = { METRICS, moscowClock, fetchChronicleData, selectStory, storyCaption, storyCopy, resultLabel, plural, runChronicle };

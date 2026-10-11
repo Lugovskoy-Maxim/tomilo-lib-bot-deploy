@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { moscowClock, selectStory, storyCaption, runChronicle, fetchChronicleData } = require('./community-chronicle');
+const { moscowClock, selectStory, storyCaption, runChronicle, fetchChronicleData, resultLabel } = require('./community-chronicle');
 const { saveState, loadState } = require('./state');
 
 const makeUser = (id, fields = {}) => ({ _id: id, username: `Читатель ${id}`, rank: 1,
@@ -36,7 +36,7 @@ test('all seven weekday stories use factual data and accurate periods', () => {
   history[0].date = '2026-10-16'; history[0].at = at('2026-10-16').toISOString();
   assert.equal(selectStory(data, history, {}, at(dates[5])).kind, 'milestone');
   const summary = selectStory(data, [], {}, at(dates[6]));
-  assert.equal(summary.kind, 'summary'); assert.match(storyCaption(summary), /Не общая статистика сайта/);
+  assert.equal(summary.kind, 'summary'); assert.match(storyCaption(summary), /Итоги недельных топов/);
 });
 
 test('no invented day delta, rank rise or first achievement when history is missing', () => {
@@ -128,4 +128,12 @@ test('private statistics are filtered even if an older API includes them', async
   const data = fixture(); data.boards['chaptersRead:week'][0].showStats = false;
   const result = await fetchChronicleData({ apiUrl: 'https://example.com/api' }, 1, fakeApi(data));
   assert.equal(result.boards['chaptersRead:week'][0].rank, 2);
+});
+
+test('Russian counters agree with their numbers', () => {
+  assert.equal(resultLabel(1, 'chaptersRead:week'), '1 глава');
+  assert.equal(resultLabel(42, 'chaptersRead:all'), '42 главы');
+  assert.equal(resultLabel(11, 'comments:week'), '11 комментариев');
+  assert.equal(resultLabel(21, 'ratings:week'), '21 оценка');
+  assert.equal(resultLabel(30, 'streak:all'), '30 дней подряд');
 });

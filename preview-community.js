@@ -26,7 +26,7 @@ async function sampleStories() {
     { ...base, kind: 'summary', title: 'Неделя в цифрах', accent: '#e6ba64', users, stats: [
       { label: 'Прочитано глав', value: 12842 }, { label: 'Комментарии', value: 648 }, { label: 'Оценки тайтлов', value: 1257 },
     ] },
-    { ...base, kind: 'spotlight', title: 'Без пропусков', metric: 'Серия активности', value: 30, unit: 'дней подряд', accent: '#ff987c' },
+    { ...base, kind: 'spotlight', title: 'Без пропусков', category: 'streak:all', metric: 'Серия активности', value: 30, unit: 'дней подряд', accent: '#ff987c' },
   ];
 }
 
