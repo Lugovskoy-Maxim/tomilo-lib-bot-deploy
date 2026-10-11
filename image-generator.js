@@ -1,4 +1,5 @@
 const { downloadCover } = require('./cover-source');
+const sharp = require('sharp');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const fs = require('fs');
 const path = require('path');
@@ -92,6 +93,8 @@ class ImageGenerator {
       if (titleInfo.coverImage) coverImage = await this.loadSourceImage(titleInfo.coverImage);
     } catch (err) {
       console.warn('Не удалось загрузить обложку:', err.message);
+      // Do not cache a successful-looking card when a supplied cover failed to decode.
+      throw err;
     }
 
     // Обложка тайтла занимает правую часть, без искажения пропорций.
@@ -207,11 +210,21 @@ class ImageGenerator {
   }
 
   async loadSourceImage(source) {
-    if (Buffer.isBuffer(source)) return loadImage(source);
+    if (Buffer.isBuffer(source)) return this.decodeImage(source);
     if (typeof source === 'string' && /^https?:\/\//i.test(source)) {
-      return loadImage(await downloadCover(source, 10_000));
+      return this.decodeImage(await downloadCover(source, 10_000));
     }
     return loadImage(source);
+  }
+
+  async decodeImage(buffer) {
+    // Cairo does not support WebP/AVIF; normalize downloaded bytes before drawing.
+    const png = await sharp(buffer, { limitInputPixels: 40_000_000 })
+      .rotate()
+      .resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    return loadImage(png);
   }
 
   async loadLogo() {

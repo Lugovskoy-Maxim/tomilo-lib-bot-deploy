@@ -5,12 +5,13 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test test-cover-source.js test-chapter-notifications.js test-report-notifications.js test-profile-bot.js test-personal-notifications.js && bash test-update-container.sh success && bash test-update-container.sh pull && bash test-update-container.sh dirty && bash test-update-container.sh diverged && bash test-update-container.sh build-failed && bash test-update-container.sh startup-failed"
+    "test": "node --test test-poster-render.js test-cover-source.js test-chapter-notifications.js test-report-notifications.js test-profile-bot.js test-personal-notifications.js && bash test-update-container.sh success && bash test-update-container.sh pull && bash test-update-container.sh dirty && bash test-update-container.sh diverged && bash test-update-container.sh build-failed && bash test-update-container.sh startup-failed"
   },
   "dependencies": {
     "canvas": "^3.2.3",
     "dotenv": "^16.3.1",
-    "node-telegram-bot-api": "^0.67.0"
+    "node-telegram-bot-api": "^0.67.0",
+    "sharp": "^0.35.5"
   },
   "private": true
 }

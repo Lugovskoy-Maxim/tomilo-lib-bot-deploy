@@ -906,8 +906,7 @@ async function fetchImageBuffer(url, timeoutMs = 15000) {
   try {
     return await downloadCover(url, timeoutMs);
   } catch (e) {
-    if (DEBUG)
-      console.log("Image fetch error:", e && e.message, url.slice(0, 70) + "…");
+    console.warn("Cover download failed:", e && e.message, url.split("?")[0].slice(0, 120));
     return null;
   }
 }
@@ -927,7 +926,7 @@ function coverCachePath(titleSlug, titleName, chapterNumber) {
     .toLowerCase()
     .replace(/[^a-z0-9а-яё_-]+/gi, "-")
     .replace(/^-+|-+$/g, "") || "title";
-  return path.join(config.coverCacheDir, `${safeTitle}-${Number(chapterNumber) || "latest"}.jpg`);
+  return path.join(config.coverCacheDir, `v2-${safeTitle}-${Number(chapterNumber) || "latest"}.jpg`);
 }
 
 function readCachedCover(titleSlug, titleName, chapterNumber) {
@@ -1340,7 +1339,7 @@ async function run() {
               imageUrls[0].slice(0, 60) + "…",
             );
         }
-      } else {
+      } else if (!photoPayload && imageUrls.length === 0) {
         console.log(
           "No cover for this title (set cover in admin for the title)",
         );
