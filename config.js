@@ -175,6 +175,8 @@ module.exports = {
   postReactionSkipPercent: parseBoundedInt(process.env.POST_REACTION_SKIP_PERCENT, 15, 0, 90),
   rustoreUrl: process.env.RUSTORE_URL || 'https://www.rustore.ru/catalog/app/ru.tomilo.lib.mobile',
   githubReleasesUrl: process.env.GITHUB_RELEASES_URL || 'https://github.com/Lugovskoy-Maxim/tomilo-lib-android/releases',
+  androidTestGroupUrl: process.env.ANDROID_TEST_GROUP_URL || 'https://groups.google.com/g/tomilo-lib-beta-testers',
+  androidTestPlayUrl: process.env.ANDROID_TEST_PLAY_URL || 'https://play.google.com/apps/testing/ru.tomilolib.mobile',
   donateUrl: (process.env.DONATE_URL || '').trim(),
   donateUrlTbank: (process.env.DONATE_URL_TBANK || '').trim(),
   statePath: process.env.STATE_PATH || '.bot-state.json',

@@ -101,7 +101,11 @@ API MAX и не принимает webhook, поэтому отдельный д
 и `MAX_PERSONAL_NOTIFICATIONS_PER_RUN`.
 
 Также бот один раз в московские сутки размещает пост о приложении для Android
-(RuStore и GitHub Releases). Пост о поддержке проекта публикуется не чаще
+(Alpha-тест в Google Play, RuStore и GitHub Releases). Карточка `assets/android-alpha-promo.png`
+сопровождается двумя кнопками: вступить в Google-группу, затем стать тестером.
+Обе ссылки нужно открыть под одним Google-аккаунтом; доступность новой версии зависит от одобрения Google.
+Ссылки задаются через `ANDROID_TEST_GROUP_URL` и `ANDROID_TEST_PLAY_URL`.
+Пост о поддержке проекта публикуется не чаще
 одного раза в сутки и уступает очередь обновлениям тайтлов. Параметры `NOTIFY_DAILY_APP_PROMO` и
 `NOTIFY_DAILY_SUPPORT` включают их, а `SUPPORT_PROMO_INTERVAL_MINUTES`
 задаёт интервал поддержки (минимум 1440 минут),

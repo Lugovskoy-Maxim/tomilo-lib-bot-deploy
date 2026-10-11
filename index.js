@@ -245,20 +245,26 @@ async function runDailyPromotions(state) {
 
   if (config.notifyDailyAppPromo && state.dailyPromotions.app !== today) {
     const text = [
-      '<b>📱 Tomilo Lib для Android</b>', '',
-      'Читайте любимые тайтлы удобнее в приложении.',
-      'Выберите способ установки ниже:',
+      '<b>📱 Тестируй Tomilo Lib для Android</b>', '',
+      'Приглашаем в Alpha-тест приложения. Помоги сделать чтение удобнее: попробуй приложение и расскажи о найденных ошибках в нашем Telegram-сообществе.', '',
+      '1. Вступи в группу тестеров Google.',
+      '2. Стань тестером в Google Play.', '',
+      'Открой обе ссылки под одним Google-аккаунтом. Если новая версия ещё недоступна, дождись одобрения Google.', '',
+      'Также приложение можно установить из RuStore или скачать APK с GitHub.',
     ].join('\n');
     const buttons = [
+      { text: '1. Вступить в группу тестеров ↗', url: config.androidTestGroupUrl },
+      { text: '2. Стать тестером в Google Play ↗', url: config.androidTestPlayUrl },
       { text: 'Скачать в RuStore ↗', url: config.rustoreUrl },
       { text: 'APK в GitHub Releases ↗', url: config.githubReleasesUrl },
     ];
-    await sendPromoWithLocalImage('android-app-promo.png', text, {
+    await sendPromoWithLocalImage('android-alpha-promo.png', text, {
       parse_mode: 'HTML',
       ...dailyPromoButtons(buttons),
     });
     await sendMaxBroadcast(text, undefined, buttons);
     state.dailyPromotions.app = today;
+    saveState(config.statePath, state);
     sentAny = true;
     console.log('Posted daily Android app promo');
   }
