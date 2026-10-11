@@ -1,3 +1,4 @@
+const { downloadCover } = require('./cover-source');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const fs = require('fs');
 const path = require('path');
@@ -208,12 +209,7 @@ class ImageGenerator {
   async loadSourceImage(source) {
     if (Buffer.isBuffer(source)) return loadImage(source);
     if (typeof source === 'string' && /^https?:\/\//i.test(source)) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      const response = await fetch(source, { signal: controller.signal });
-      clearTimeout(timer);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return loadImage(Buffer.from(await response.arrayBuffer()));
+      return loadImage(await downloadCover(source, 10_000));
     }
     return loadImage(source);
   }

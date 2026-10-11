@@ -12,6 +12,7 @@ const { runReportNotifications } = require("./report-notifications");
 const { isMaxEnabled, sendOrEditMaxMessage } = require("./max");
 const { waitForMessageSlot } = require("./message-rate-limiter");
 const ImageGenerator = require("./image-generator");
+const { downloadCover } = require("./cover-source");
 const MonthlyLeadersCard = require('./monthly-leaders-card');
 
 const bot = config.telegramEnabled
@@ -903,25 +904,7 @@ function getImageUrls(title) {
 /** Скачиваем картинку по одному URL, возвращаем буфер или null. */
 async function fetchImageBuffer(url, timeoutMs = 15000) {
   try {
-    const controller = new AbortController();
-    const to = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; TomiloLibBot/1.0; +https://tomilo-lib.ru)",
-        Accept: "image/*",
-      },
-    });
-    clearTimeout(to);
-    if (!res.ok) {
-      if (DEBUG)
-        console.log("Image fetch failed:", res.status, url.slice(0, 70) + "…");
-      return null;
-    }
-    const buf = await res.arrayBuffer();
-    return Buffer.from(buf);
+    return await downloadCover(url, timeoutMs);
   } catch (e) {
     if (DEBUG)
       console.log("Image fetch error:", e && e.message, url.slice(0, 70) + "…");
