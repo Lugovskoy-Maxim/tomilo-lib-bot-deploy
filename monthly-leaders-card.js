@@ -1,6 +1,8 @@
 const { createCanvas, loadImage, registerFont } = require('canvas');
 const fs = require('fs');
 const path = require('path');
+const { downloadCover } = require('./cover-source');
+const ImageGenerator = require('./image-generator');
 
 /**
  * Карточка еженедельного дайджеста лидеров. Аватары могут быть URL, путями
@@ -91,11 +93,14 @@ class MonthlyLeadersCard {
   async loadAvatar(source) {
     if (!source) return null;
     try {
-      if (Buffer.isBuffer(source)) return await loadImage(source);
+      if (source && typeof source === 'object' && !Buffer.isBuffer(source)) source = source.imageUrl || source.url;
+      if (!source) return null;
+      if (Buffer.isBuffer(source)) return await ImageGenerator.prototype.decodeImage(source);
       if (typeof source === 'string' && /^https?:\/\//i.test(source)) {
-        const response = await fetch(source, { signal: AbortSignal.timeout(10_000) });
-        if (!response.ok) return null;
-        return await loadImage(Buffer.from(await response.arrayBuffer()));
+        const url = new URL(source);
+        // Preview variants bound GIF download size; sharp decodes the cached WebP.
+        if (/\/shop\/images\/(?:asset\/[^/]+|[^/]+)$/.test(url.pathname)) url.searchParams.set('w', '640');
+        return await ImageGenerator.prototype.decodeImage(await downloadCover(url.toString(), 15_000, { original: false }));
       }
       return await loadImage(source);
     } catch (_) {

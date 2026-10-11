@@ -14,6 +14,8 @@ const { waitForMessageSlot } = require("./message-rate-limiter");
 const ImageGenerator = require("./image-generator");
 const { downloadCover } = require("./cover-source");
 const MonthlyLeadersCard = require('./monthly-leaders-card');
+const CommunityCard = require('./community-card');
+const { runChronicle } = require('./community-chronicle');
 
 const bot = config.telegramEnabled
   ? new TelegramBot(config.telegramBotToken, { polling: { autoStart: false, params: { allowed_updates: ['message', 'callback_query'] } } })
@@ -23,6 +25,25 @@ const postImageGenerator = new ImageGenerator({
   siteUrl: config.siteUrl,
 });
 const monthlyLeadersCard = new MonthlyLeadersCard();
+const communityCard = new CommunityCard();
+
+async function runDailyChronicle(state) {
+  return runChronicle({
+    state, config, save: () => saveState(config.statePath, state),
+    render: story => communityCard.generate(story),
+    deliver: async (channel, { image, text, buttons }) => {
+      if (channel === 'max') {
+        const post = state.communityChronicle.post;
+        return sendOrEditMaxMessage({ text, buttons, image, imageToken: post.maxImageToken,
+          onImageUploaded: token => { post.maxImageToken = token; saveState(config.statePath, state); } });
+      }
+      return sendPhotoOrMessage({ photoPayload: image, text,
+        opts: { parse_mode: 'HTML', ...dailyPromoButtons(buttons) },
+        fileOpts: { filename: 'community.png', contentType: 'image/png' },
+      });
+    },
+  });
+}
 
 const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";
 
@@ -1101,6 +1122,11 @@ async function run() {
         : null;
 
   const today = getTodayString();
+  // Daily chronicle has its own schedule; title traffic must not starve it all day.
+  let chronicleSent = false;
+  try { chronicleSent = await runDailyChronicle(state); }
+  catch (error) { console.error('Daily chronicle failed:', error.message); }
+  if (chronicleSent) state.promotionsPauseUntil = Date.now() + config.dailyPromotionPauseMs;
   if (!state.titleMessages) state.titleMessages = {};
   if (!state.maxTitleMessages) state.maxTitleMessages = {};
   if (!state.notifiedChapters) state.notifiedChapters = {};
@@ -1504,12 +1530,12 @@ async function run() {
 
   // Служебные промо не конкурируют с обновлениями тайтлов: в проходе с
   // новыми главами и во время промо-паузы они ждут следующего цикла.
-  const promotionPauseMs = sentPublicUpdate || remainingPromotionPause > 0
+  const promotionPauseMs = sentPublicUpdate || remainingPromotionPause > 0 || chronicleSent
     ? 0
     : await runDailyPromotions(state);
   // Не публикуем недельный дайджест в одной волне с ежедневными промо-постами.
   // Если сегодня уже вышло промо, карточка лидеров спокойно дождётся следующего опроса.
-  const monthlyLeadersSent = promotionPauseMs > 0
+  const monthlyLeadersSent = promotionPauseMs > 0 || remainingPromotionPause > 0 || chronicleSent
     ? false
     : await runMonthlyLeadersPost(state);
 
@@ -1536,7 +1562,7 @@ async function run() {
   });
   const pauseMs = promotionPauseMs > 0
     ? promotionPauseMs
-    : monthlyLeadersSent
+    : monthlyLeadersSent || chronicleSent
       ? config.dailyPromotionPauseMs
       : 0;
   return pauseMs > 0 ? { pauseMs } : undefined;

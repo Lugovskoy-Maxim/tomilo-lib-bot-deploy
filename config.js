@@ -140,6 +140,8 @@ module.exports = {
   notifyDailySupport: parseBool(process.env.NOTIFY_DAILY_SUPPORT, true),
   /** Еженедельная карточка с пятью лидерами; отключается без изменения кода. */
   notifyMonthlyLeaders: parseBool(process.env.NOTIFY_MONTHLY_LEADERS, true),
+  notifyDailyChronicle: parseBool(process.env.NOTIFY_DAILY_CHRONICLE, true),
+  chronicleTime: parseTimeOfDay(process.env.CHRONICLE_TIME, '12:00'),
   leadersPeriod: ['week', 'month', 'all'].includes(optional('LEADERS_PERIOD'))
     ? optional('LEADERS_PERIOD') : 'month',
   leadersCategories: configuredLeaderboardCategories.length

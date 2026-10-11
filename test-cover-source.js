@@ -41,3 +41,11 @@ test('HTTP errors and empty bodies are rejected', async (t) => {
   global.fetch = async () => new Response('');
   await assert.rejects(downloadCover('https://cdn.example/cover.jpg'), /Empty image/);
 });
+
+test('WebP-capable callers can keep server preview width for large GIFs', async t => {
+  t.mock.method(global, 'fetch', async source => {
+    assert.equal(new URL(source).searchParams.get('w'), '640');
+    return new Response('webp bytes');
+  });
+  await downloadCover('https://api.example/api/shop/images/cover.gif?w=640', 1000, { original: false });
+});

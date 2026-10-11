@@ -15,11 +15,11 @@ function originalCoverUrl(source) {
   return source;
 }
 
-async function downloadCover(source, timeoutMs = 15000) {
+async function downloadCover(source, timeoutMs = 15000, { original = true } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(originalCoverUrl(source), {
+    const response = await fetch(original ? originalCoverUrl(source) : source, {
       signal: controller.signal,
       redirect: 'follow',
       headers: {
