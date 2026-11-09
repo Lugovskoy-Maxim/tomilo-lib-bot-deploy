@@ -16,6 +16,7 @@ const { downloadCover } = require("./cover-source");
 const MonthlyLeadersCard = require('./monthly-leaders-card');
 const CommunityCard = require('./community-card');
 const { runChronicle } = require('./community-chronicle');
+const { generateAnimeUpdateCard } = require('./anime-update-card');
 
 const bot = config.telegramEnabled
   ? new TelegramBot(config.telegramBotToken, { polling: { autoStart: false, params: { allowed_updates: ['message', 'callback_query'] } } })
@@ -1007,6 +1008,113 @@ async function fetchHiddenChapterUpdatesTitles() {
   return json.data;
 }
 
+function animeEpisodeKey(row) {
+  const slug = String(row?.titleSlug || '').trim();
+  const number = Number(row?.episodeNumber);
+  return slug && Number.isFinite(number) && number > 0 ? `${slug}:${number}` : '';
+}
+
+function formatAnimeUpdateMessage(row) {
+  const title = escapeHtml(row.titleName || 'Новое аниме');
+  const number = escapeHtml(String(row.episodeNumber));
+  const episodeName = String(row.episodeName || '').trim();
+  const source = String(row.sourceLabel || '').trim();
+  const lines = [
+    '<b>【 НОВАЯ СЕРИЯ 】</b>',
+    '',
+    `<b>${title}</b>`,
+    `<b>▶ Серия ${number}</b>`,
+  ];
+  if (episodeName) lines.push(`<i>${escapeHtml(episodeName)}</i>`);
+  if (source) lines.push('', `Источник: ${escapeHtml(source)}`);
+  lines.push('', '<i>Открыть тайтл и смотреть в TOMILO ANI ↓</i>');
+  return lines.join('\n');
+}
+
+async function fetchLatestAnimeUpdates() {
+  const res = await fetch(`${config.apiUrl}/anime/updates?limit=48`, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`API anime updates ${res.status}`);
+  const payload = await res.json();
+  const rows = Array.isArray(payload) ? payload
+    : payload?.success === true && Array.isArray(payload.data) ? payload.data : null;
+  if (!rows) throw new Error('Invalid API response (anime updates)');
+  return rows;
+}
+
+async function runAnimeNotifications(state) {
+  if (!config.telegramEnabled || !config.notifyAnimeUpdates || !config.telegramAnimeChatId) return;
+  try {
+    const updates = await fetchLatestAnimeUpdates();
+    const valid = updates.filter(row => animeEpisodeKey(row));
+    if (!state.notifiedAnimeEpisodes || typeof state.notifiedAnimeEpisodes !== 'object')
+      state.notifiedAnimeEpisodes = {};
+
+    // Первый опрос только создаёт baseline, иначе после установки бот разошлёт старые серии.
+    if (!state.animeUpdatesInitialized) {
+      for (const row of valid) state.notifiedAnimeEpisodes[animeEpisodeKey(row)] = Date.now();
+      state.animeUpdatesInitialized = true;
+      saveState(config.statePath, state);
+      console.log(`Anime updates baseline initialized (${valid.length} current episodes)`);
+      return;
+    }
+
+    const fresh = valid
+      .filter(row => !state.notifiedAnimeEpisodes[animeEpisodeKey(row)])
+      .sort((a, b) => new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime());
+    for (const row of fresh) {
+      const key = animeEpisodeKey(row);
+      const slug = String(row.titleSlug);
+      const text = formatAnimeUpdateMessage(row);
+      const opts = {
+        parse_mode: 'HTML',
+        message_thread_id: config.telegramAnimeThreadId,
+        reply_markup: { inline_keyboard: [[{
+          text: 'Смотреть на TOMILO ANI ↗',
+          url: `${config.siteUrl}/${encodeURIComponent(slug)}`,
+        }]] },
+      };
+      const poster = row.poster ? await fetchImageBufferFromUrls(getImageUrls({ coverImage: row.poster })) : null;
+      let photoPayload = poster;
+      let isMangaCard = false;
+      if (poster) {
+        try {
+          photoPayload = await generateAnimeUpdateCard({
+            poster,
+            title: row.titleName,
+            episodeNumber: row.episodeNumber,
+            episodeName: row.episodeName,
+            sourceLabel: row.sourceLabel,
+          });
+          isMangaCard = true;
+        } catch (error) {
+          console.warn('Anime manga-style card failed; using poster:', error.message);
+        }
+      }
+      await sendPhotoOrMessage({
+        photoPayload,
+        text,
+        opts,
+        chatId: config.telegramAnimeChatId,
+        fileOpts: isMangaCard ? { filename: 'anime-update.jpg', contentType: 'image/jpeg' } : undefined,
+      });
+      state.notifiedAnimeEpisodes[key] = Date.now();
+      saveState(config.statePath, state);
+      // Keep persistent state compact while retaining ample duplicate protection.
+      const keys = Object.keys(state.notifiedAnimeEpisodes);
+      if (keys.length > 3000) {
+        for (const oldKey of keys.sort((a, b) => state.notifiedAnimeEpisodes[a] - state.notifiedAnimeEpisodes[b]).slice(0, keys.length - 3000))
+          delete state.notifiedAnimeEpisodes[oldKey];
+      }
+      console.log(`Anime update sent: ${row.titleName}, episode ${row.episodeNumber}`);
+    }
+  } catch (error) {
+    console.error('[ANIME] Update check failed:', error.message);
+  }
+}
+
 /** Подгружаем тайтл по slug — в списке глав не всегда есть coverImage. */
 async function fetchTitleBySlug(slug) {
   if (!slug) return null;
@@ -1137,6 +1245,7 @@ async function run() {
   if (!state.maxTitleMessages) state.maxTitleMessages = {};
   if (!state.notifiedChapters) state.notifiedChapters = {};
   if (!state.sentChapterEvents) state.sentChapterEvents = {};
+  await runAnimeNotifications(state);
 
   // ======== Обработка новых глав ========
   // Сообщения отправляем как обычно. Если тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"

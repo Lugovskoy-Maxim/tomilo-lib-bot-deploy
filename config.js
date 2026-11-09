@@ -84,6 +84,13 @@ const telegramChaptersThreadId = parseBoundedInt(
   1,
   Number.MAX_SAFE_INTEGER,
 );
+const telegramAnimeChatId = optional('TELEGRAM_ANIME_CHAT_ID') || telegramChaptersChatId;
+const telegramAnimeThreadId = parseBoundedInt(
+  process.env.TELEGRAM_ANIME_THREAD_ID,
+  4097,
+  1,
+  Number.MAX_SAFE_INTEGER,
+);
 const maxBotToken = optional('MAX_BOT_TOKEN');
 const maxChatId = optional('MAX_CHAT_ID');
 const maxEnabled = parseBool(process.env.MAX_ENABLED, false);
@@ -108,6 +115,8 @@ module.exports = {
   telegramChatId,
   telegramChaptersChatId,
   telegramChaptersThreadId,
+  telegramAnimeChatId,
+  telegramAnimeThreadId,
   telegramReportsChatId,
   telegramReportsThreadId,
   /** Публичные уведомления в MAX. Поддерживается самостоятельный MAX-only режим. */
@@ -186,6 +195,8 @@ module.exports = {
   // --- Оповещения (вкл/выкл в конфиге) ---
   /** Оповещения о новых главах в канал */
   notifyNewChapters: parseBool(process.env.NOTIFY_NEW_CHAPTERS, true),
+  /** Публичные уведомления о новых сериях аниме. */
+  notifyAnimeUpdates: parseBool(process.env.NOTIFY_ANIME_UPDATES, true),
   /** Личные уведомления о главах в закладках (очередь API) */
   notifyPersonalBookmarks: parseBool(process.env.NOTIFY_PERSONAL_BOOKMARKS, true),
   /** Жалобы из очереди API отправляются этим контейнером через VPN. */

@@ -20,6 +20,8 @@ function loadState(statePath) {
       // Точные отпечатки опубликованных уведомлений: «тайтл + глава».
       // Нужны как вторая линия защиты, если API повторно отдаёт старую запись.
       sentChapterEvents: data.sentChapterEvents && typeof data.sentChapterEvents === 'object' ? data.sentChapterEvents : {},
+      animeUpdatesInitialized: data.animeUpdatesInitialized === true,
+      notifiedAnimeEpisodes: data.notifiedAnimeEpisodes && typeof data.notifiedAnimeEpisodes === 'object' ? data.notifiedAnimeEpisodes : {},
       // Тайтлы, для которых уже публиковался первичный анонс импорта.
       announcedTitleImports: data.announcedTitleImports && typeof data.announcedTitleImports === 'object' ? data.announcedTitleImports : {},
       legacyTitleAnnouncements: data.legacyTitleAnnouncements && typeof data.legacyTitleAnnouncements === 'object' ? data.legacyTitleAnnouncements : {},
@@ -46,6 +48,8 @@ function loadState(statePath) {
       notifiedMilestones: {},
       notifiedChapters: {},
       sentChapterEvents: {},
+      animeUpdatesInitialized: false,
+      notifiedAnimeEpisodes: {},
       announcedTitleImports: {},
       legacyTitleAnnouncements: {},
       lastViewsDate: null,
@@ -79,6 +83,8 @@ function saveState(statePath, state) {
     notifiedMilestones: state.notifiedMilestones,
     notifiedChapters: state.notifiedChapters,
     sentChapterEvents: state.sentChapterEvents,
+    animeUpdatesInitialized: state.animeUpdatesInitialized,
+    notifiedAnimeEpisodes: state.notifiedAnimeEpisodes,
     announcedTitleImports: state.announcedTitleImports,
     legacyTitleAnnouncements: state.legacyTitleAnnouncements,
     lastViewsDate: state.lastViewsDate,
