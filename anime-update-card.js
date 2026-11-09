@@ -26,111 +26,142 @@ function wrapText(ctx, value, maxWidth) {
   return lines;
 }
 
-function drawHalftone(ctx, x, y, width, height, radius, gap, color = '#151515') {
-  ctx.fillStyle = color;
-  for (let row = 0, py = y; py < y + height; row += 1, py += gap) {
-    for (let px = x + (row % 2 ? gap / 2 : 0); px < x + width; px += gap) {
-      ctx.beginPath();
-      ctx.arc(px, py, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
+function drawGlow(ctx, x, y, radius, color) {
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  glow.addColorStop(0, color);
+  glow.addColorStop(1, 'rgba(16, 18, 39, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+}
+
+function drawSpark(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-size, 0); ctx.lineTo(size, 0);
+  ctx.moveTo(0, -size); ctx.lineTo(0, size);
+  ctx.stroke();
+  ctx.restore();
 }
 
 async function generateAnimeUpdateCard({ poster, title, episodeNumber, episodeName, sourceLabel }) {
   const canvas = createCanvas(WIDTH, HEIGHT);
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#f7f5ef';
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // Keep the original anime artwork in color; manga treatment lives in the framing and ink lines.
+  const background = ctx.createLinearGradient(380, 0, WIDTH, HEIGHT);
+  background.addColorStop(0, '#172548');
+  background.addColorStop(0.48, '#38246f');
+  background.addColorStop(1, '#7e2f78');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  drawGlow(ctx, 860, 95, 470, 'rgba(32, 205, 230, .30)');
+  drawGlow(ctx, 1070, 590, 420, 'rgba(255, 73, 145, .32)');
+
+  // The poster remains in full color and carries the artwork for the card.
   ctx.save();
   ctx.beginPath();
-  ctx.rect(0, 0, 430, HEIGHT);
+  ctx.roundRect(14, 14, 420, HEIGHT - 28, 30);
   ctx.clip();
   if (poster) {
-    const colorPoster = await sharp(poster).rotate().resize(860, 1260, { fit: 'cover', position: 'centre' })
-      .normalize().jpeg({ quality: 88 }).toBuffer();
-    const image = await loadImage(colorPoster);
-    const scale = Math.max(430 / image.width, HEIGHT / image.height);
+    const posterBytes = await sharp(poster).rotate().resize(840, 1260, { fit: 'cover', position: 'centre' })
+      .normalize().jpeg({ quality: 90 }).toBuffer();
+    const image = await loadImage(posterBytes);
+    const scale = Math.max(420 / image.width, (HEIGHT - 28) / image.height);
     const width = image.width * scale;
     const height = image.height * scale;
-    ctx.drawImage(image, (430 - width) / 2, (HEIGHT - height) / 2, width, height);
-    ctx.fillStyle = 'rgba(255,255,255,.12)';
-    ctx.fillRect(0, 0, 430, HEIGHT);
+    ctx.drawImage(image, 14 + (420 - width) / 2, 14 + (HEIGHT - 28 - height) / 2, width, height);
   } else {
-    ctx.fillStyle = '#dedbd3';
-    ctx.fillRect(0, 0, 430, HEIGHT);
-    drawHalftone(ctx, 15, 15, 400, HEIGHT - 30, 2.4, 16, '#777');
+    const fallback = ctx.createLinearGradient(0, 0, 420, HEIGHT);
+    fallback.addColorStop(0, '#32c5d7');
+    fallback.addColorStop(1, '#7849df');
+    ctx.fillStyle = fallback;
+    ctx.fillRect(14, 14, 420, HEIGHT - 28);
+    drawSpark(ctx, 220, 250, 46, 'rgba(255,255,255,.88)');
+    drawSpark(ctx, 326, 358, 22, 'rgba(255,255,255,.72)');
   }
-  // Comic speed lines and a hard black panel gutter.
-  ctx.strokeStyle = 'rgba(10,10,10,.36)';
-  ctx.lineWidth = 3;
-  for (let i = 0; i < 15; i += 1) {
+  const posterShade = ctx.createLinearGradient(275, 0, 440, 0);
+  posterShade.addColorStop(0, 'rgba(12,18,42,0)');
+  posterShade.addColorStop(1, 'rgba(12,18,42,.32)');
+  ctx.fillStyle = posterShade;
+  ctx.fillRect(14, 14, 420, HEIGHT - 28);
+  ctx.restore();
+
+  // Bright edge and floating light streaks give the layout an anime key-art feel.
+  ctx.strokeStyle = 'rgba(112, 239, 255, .92)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(437, 50); ctx.lineTo(437, 580);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.16)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i += 1) {
     ctx.beginPath();
-    ctx.moveTo(-80 + i * 42, 0);
-    ctx.lineTo(430, 260 + i * 20);
+    ctx.moveTo(800 + i * 78, 0);
+    ctx.lineTo(570 + i * 78, HEIGHT);
     ctx.stroke();
   }
+  drawSpark(ctx, 1110, 110, 17, 'rgba(255,255,255,.9)');
+  drawSpark(ctx, 1015, 270, 9, 'rgba(113,239,255,.95)');
+
+  const panelX = 490;
+  ctx.save();
+  ctx.shadowColor = 'rgba(255, 68, 137, .45)';
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = '#ff4f87';
+  ctx.beginPath();
+  ctx.roundRect(panelX, 48, 294, 58, 29);
+  ctx.fill();
   ctx.restore();
-  ctx.fillStyle = '#e63832';
-  ctx.fillRect(422, 0, 12, HEIGHT);
-
-  // Right panel is laid out like a clean manga page with a screentone corner.
-  drawHalftone(ctx, 945, 0, 255, 164, 2.1, 15, '#777');
-  ctx.fillStyle = '#f7f5ef';
-  ctx.fillRect(910, 0, 290, 172);
-  ctx.fillStyle = '#e63832';
-  ctx.fillRect(456, 38, 690, 86);
-  ctx.strokeStyle = '#111';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(456, 38, 690, 86);
   ctx.fillStyle = '#fff';
-  ctx.font = '700 34px "Exo 2", sans-serif';
+  ctx.font = '700 25px "Exo 2", sans-serif';
   ctx.textBaseline = 'middle';
-  ctx.fillText('НОВАЯ СЕРИЯ  /  TOMILO ANI', 482, 82, 650);
+  ctx.fillText('НОВАЯ СЕРИЯ', panelX + 26, 77);
 
-  ctx.fillStyle = '#111';
-  ctx.font = '700 52px "Exo 2", sans-serif';
-  const titleLines = wrapText(ctx, title || 'Новое аниме', 660).slice(0, 3);
-  let y = 205;
+  ctx.fillStyle = 'rgba(220, 240, 255, .82)';
+  ctx.font = '600 20px "Exo 2", sans-serif';
+  ctx.fillText('TOMILO ANI  ·  СВЕЖИЕ ОБНОВЛЕНИЯ', panelX, 151, 625);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 51px "Exo 2", sans-serif';
+  ctx.shadowColor = 'rgba(8, 12, 30, .38)';
+  ctx.shadowBlur = 12;
+  const titleLines = wrapText(ctx, title || 'Новое аниме', 650).slice(0, 3);
+  let titleY = 238;
   for (const line of titleLines) {
-    ctx.fillText(line, 470, y, 670);
-    y += 62;
+    ctx.fillText(line, panelX, titleY, 660);
+    titleY += 62;
   }
+  ctx.shadowBlur = 0;
 
-  ctx.fillStyle = '#fff';
-  ctx.strokeStyle = '#111';
-  ctx.lineWidth = 6;
+  const badgeY = Math.max(420, titleY + 5);
+  ctx.fillStyle = 'rgba(255,255,255,.96)';
   ctx.beginPath();
-  ctx.roundRect(470, 420, 420, 88, 8);
+  ctx.roundRect(panelX, badgeY, 315, 78, 18);
   ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = '#111';
-  ctx.font = '700 40px "Exo 2", sans-serif';
-  ctx.fillText(`СЕРИЯ ${episodeNumber}`, 494, 465, 370);
+  ctx.fillStyle = '#32225f';
+  ctx.font = '700 37px "Exo 2", sans-serif';
+  ctx.fillText(`СЕРИЯ ${episodeNumber}`, panelX + 22, badgeY + 39, 275);
+
+  const footerY = Math.min(585, badgeY + 116);
   if (episodeName) {
-    ctx.font = '500 24px "Exo 2", sans-serif';
-    ctx.fillText(episodeName, 472, 548, 670);
+    ctx.fillStyle = 'rgba(255,255,255,.94)';
+    ctx.font = '500 23px "Exo 2", sans-serif';
+    ctx.fillText(String(episodeName).slice(0, 64), panelX, footerY, 625);
+  }
+  if (sourceLabel) {
+    ctx.fillStyle = 'rgba(185, 239, 255, .88)';
+    ctx.font = '500 17px "Exo 2", sans-serif';
+    ctx.fillText(String(sourceLabel).slice(0, 72), panelX, 606, 625);
   }
 
-  ctx.fillStyle = '#111';
+  ctx.strokeStyle = 'rgba(255,255,255,.58)';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(1050, 482); ctx.lineTo(1178, 515); ctx.lineTo(1084, 606); ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = '700 20px "Exo 2", sans-serif';
-  ctx.fillText('Новая', 1072, 526);
-  ctx.fillText('серия', 1080, 553);
-  if (sourceLabel) {
-    ctx.fillStyle = '#111';
-    ctx.font = '500 18px "Exo 2", sans-serif';
-    ctx.fillText(String(sourceLabel).slice(0, 56), 470, 594, 520);
-  }
-  ctx.strokeStyle = '#111';
-  ctx.lineWidth = 5;
-  ctx.strokeRect(3, 3, WIDTH - 6, HEIGHT - 6);
-  return canvas.toBuffer('image/jpeg', { quality: 88 });
+  ctx.roundRect(3, 3, WIDTH - 6, HEIGHT - 6, 32);
+  ctx.stroke();
+  return canvas.toBuffer('image/jpeg', { quality: 90 });
 }
 
 module.exports = { generateAnimeUpdateCard };
