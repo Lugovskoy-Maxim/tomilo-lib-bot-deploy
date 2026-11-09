@@ -1073,7 +1073,7 @@ async function runAnimeNotifications(state) {
         message_thread_id: config.telegramAnimeThreadId,
         reply_markup: { inline_keyboard: [[{
           text: 'Смотреть на TOMILO ANI ↗',
-          url: `${config.animeSiteUrl}/${encodeURIComponent(slug)}`,
+          url: `${config.animeSiteUrl}/${encodeURIComponent(slug)}/watch/${encodeURIComponent(String(row.episodeNumber))}`,
         }]] },
       };
       const poster = row.poster ? await fetchImageBufferFromUrls(getImageUrls({ coverImage: row.poster })) : null;
