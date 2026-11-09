@@ -43,15 +43,15 @@ async function generateAnimeUpdateCard({ poster, title, episodeNumber, episodeNa
   ctx.fillStyle = '#f7f5ef';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // Left panel uses the actual anime poster, converted to ink-like grayscale.
+  // Keep the original anime artwork in color; manga treatment lives in the framing and ink lines.
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, 430, HEIGHT);
   ctx.clip();
   if (poster) {
-    const inkPoster = await sharp(poster).rotate().resize(860, 1260, { fit: 'cover', position: 'centre' })
-      .greyscale().normalize().jpeg({ quality: 86 }).toBuffer();
-    const image = await loadImage(inkPoster);
+    const colorPoster = await sharp(poster).rotate().resize(860, 1260, { fit: 'cover', position: 'centre' })
+      .normalize().jpeg({ quality: 88 }).toBuffer();
+    const image = await loadImage(colorPoster);
     const scale = Math.max(430 / image.width, HEIGHT / image.height);
     const width = image.width * scale;
     const height = image.height * scale;
@@ -64,7 +64,7 @@ async function generateAnimeUpdateCard({ poster, title, episodeNumber, episodeNa
     drawHalftone(ctx, 15, 15, 400, HEIGHT - 30, 2.4, 16, '#777');
   }
   // Comic speed lines and a hard black panel gutter.
-  ctx.strokeStyle = 'rgba(10,10,10,.72)';
+  ctx.strokeStyle = 'rgba(10,10,10,.36)';
   ctx.lineWidth = 3;
   for (let i = 0; i < 15; i += 1) {
     ctx.beginPath();
@@ -73,20 +73,22 @@ async function generateAnimeUpdateCard({ poster, title, episodeNumber, episodeNa
     ctx.stroke();
   }
   ctx.restore();
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#e63832';
   ctx.fillRect(422, 0, 12, HEIGHT);
 
   // Right panel is laid out like a clean manga page with a screentone corner.
   drawHalftone(ctx, 945, 0, 255, 164, 2.1, 15, '#777');
   ctx.fillStyle = '#f7f5ef';
   ctx.fillRect(910, 0, 290, 172);
+  ctx.fillStyle = '#e63832';
+  ctx.fillRect(456, 38, 690, 86);
   ctx.strokeStyle = '#111';
   ctx.lineWidth = 6;
   ctx.strokeRect(456, 38, 690, 86);
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#fff';
   ctx.font = '700 34px "Exo 2", sans-serif';
   ctx.textBaseline = 'middle';
-  ctx.fillText('速報  /  TOMILO ANI', 482, 82);
+  ctx.fillText('НОВАЯ СЕРИЯ  /  TOMILO ANI', 482, 82, 650);
 
   ctx.fillStyle = '#111';
   ctx.font = '700 52px "Exo 2", sans-serif';
