@@ -125,6 +125,7 @@ module.exports = {
   maxChatId,
   apiUrl: (process.env.API_URL || 'http://localhost:3001/api').replace(/\/$/, ''),
   siteUrl: (process.env.SITE_URL || 'https://tomilo-lib.ru').replace(/\/$/, ''),
+  animeSiteUrl: (process.env.ANI_SITE_URL || 'https://tomilo-ani.ru').replace(/\/$/, ''),
   /** Базовый URL для картинок с сервера. По умолчанию = siteUrl. */
   imageBaseUrl: (process.env.IMAGE_BASE_URL || process.env.SITE_URL || 'https://tomilo-lib.ru').replace(/\/$/, ''),
   /** Базовый URL для картинок из облака (например S3). Если задан, при относительном coverImage пробуем оба варианта. */
