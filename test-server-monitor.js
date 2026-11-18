@@ -83,7 +83,7 @@ test('stale host data is distinct from measured pressure; container memory is ne
   const now = Date.now();
   assert.equal(resourceChecks({ sampledAt: new Date(now - 100000).toISOString() }, now)[0].ok, false);
   const checks = resourceChecks({ sampledAt: new Date(now).toISOString(), cpu: { usage: 95 },
-    memory: { percentage: 91 }, disk: { percentage: 50, available: 1024 }, swap: { percentage: 0 } }, now);
+    memory: { percentage: 91 }, disk: { percentage: 80, available: 10 * 1024 ** 3 }, swap: { percentage: 0 } }, now);
   assert.equal(checks.find(c => c.key === 'cpu').ok, false);
   assert.equal(checks.find(c => c.key === 'ram').ok, false);
   assert.equal(checks.find(c => c.key === 'disk').ok, false);

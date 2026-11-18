@@ -53,7 +53,7 @@ function resourceChecks(metrics, now) {
     { key: 'cpu', label: 'CPU', ok: Number.isFinite(metrics.cpu?.usage) && metrics.cpu.usage < 90, detail: pct(metrics.cpu?.usage) },
     { key: 'ram', label: 'RAM', ok: Number.isFinite(metrics.memory?.percentage) && metrics.memory.percentage < 90,
       detail: `${pct(metrics.memory?.percentage)} (${gib(metrics.memory?.used)} / ${gib(metrics.memory?.total)})` },
-    { key: 'disk', label: 'Диск', ok: Number.isFinite(metrics.disk?.percentage) && metrics.disk.percentage < 90 && metrics.disk?.available >= 3 * 1024 ** 3,
+    { key: 'disk', label: 'Диск', ok: Number.isFinite(metrics.disk?.percentage) && metrics.disk.percentage < 80 && metrics.disk?.available >= 3 * 1024 ** 3,
       detail: `${pct(metrics.disk?.percentage)}, свободно ${gib(metrics.disk?.available)}` },
     { key: 'swap', label: 'Swap', ok: Number.isFinite(metrics.swap?.percentage) && metrics.swap.percentage < 75,
       detail: pct(metrics.swap?.percentage) },
@@ -119,7 +119,7 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
     const message = await send(id, summary());
     state.summaryMessage = { chatId: id, id: message?.message_id };
     state.summaryPending = false;
-    state.summaryVersion = 2;
+    state.summaryVersion = 3;
     save();
     if (previous?.id && String(previous.chatId) === String(id) && bot.deleteMessage) {
       await bot.deleteMessage(id, previous.id).catch(() => {});
@@ -165,7 +165,7 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
         }
       }
       const hourly = !state.lastSummary || now() - state.lastSummary >= HOUR;
-      if (force || hourly || state.summaryPending || state.summaryVersion !== 2) {
+      if (force || hourly || state.summaryPending || state.summaryVersion !== 3) {
         await publishSummary();
         if (hourly) {
           state.lastSummary = now();
