@@ -16,6 +16,7 @@ services:
       - bot-state:/data
       - ./wireguard:/etc/wireguard:ro
       - ./certs:/certs:ro
+      - /var/lib/tomilo-host-monitor:/host-metrics:ro
     # NET_ADMIN and /dev/net/tun are required only for WireGuard. They affect
     # this container's network namespace, never the host routing table.
     cap_drop:

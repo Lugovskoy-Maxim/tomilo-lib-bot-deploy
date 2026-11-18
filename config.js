@@ -205,6 +205,17 @@ module.exports = {
   reportsPollIntervalMs: parseBoundedInt(process.env.REPORTS_POLL_INTERVAL_MS, 15000, 10000, 300000),
   /** Секрет для /telegram/bot/* (тот же, что TELEGRAM_BOT_API_SECRET на API) */
   botApiSecret: (process.env.BOT_API_SECRET || process.env.TELEGRAM_BOT_API_SECRET || '').trim(),
+  monitorEnabled: parseBool(process.env.MONITOR_ENABLED, true),
+  monitorChatId: optional('MONITOR_CHAT_ID'),
+  monitorUsername: optional('MONITOR_USERNAME') || 'tomilodev',
+  monitorStatePath: optional('MONITOR_STATE_PATH') || '/data/server-monitor-state.json',
+  monitorMetricsPath: optional('MONITOR_METRICS_PATH') || '/host-metrics/metrics.json',
+  monitorTargets: [
+    { key: 'lib', label: 'Tomilo Lib', url: 'https://tomilo-lib.ru/' },
+    { key: 'ani', label: 'Tomilo Ani', url: 'https://tomilo-ani.ru/' },
+    { key: 'api', label: 'API, MongoDB, Redis, worker', url: 'https://tomilo-lib.ru/api/health/ready' },
+    { key: 'ani-health', label: 'Ani health', url: 'https://tomilo-ani.ru/health' },
+  ],
   /** Оповещения «Новый тайтл на сайте» — когда к тайтлу, созданному сегодня, добавляются главы */
   notifyNewTitles: parseBool(process.env.NOTIFY_NEW_TITLES, true),
   /** Таблица лидеров: уведомлять об изменении позиций в рейтинге (sortBy: rating или views) */

@@ -6,6 +6,8 @@ const dns = require("dns");
 const config = require("./config");
 const { loadState, saveState } = require("./state");
 const { chapterDestinations, dailyChapterMessages, syncChapterMessages } = require("./chapter-notifications");
+const { fetchChapterUpdates } = require("./chapter-updates");
+const { createMonitor } = require('./server-monitor');
 const { setupProfileBot, COMMANDS } = require("./profile-bot");
 const { apiFetch, runPersonalNotifications } = require("./personal-notifications");
 const { runReportNotifications } = require("./report-notifications");
@@ -21,6 +23,10 @@ const { generateAnimeUpdateCard } = require('./anime-update-card');
 const bot = config.telegramEnabled
   ? new TelegramBot(config.telegramBotToken, { polling: { autoStart: false, params: { allowed_updates: ['message', 'callback_query'] } } })
   : null;
+const serverMonitor = bot && config.monitorEnabled ? createMonitor({ bot, config }) : null;
+function reportMonitorError(category) {
+  serverMonitor?.reportError(category).catch(() => console.error('[MONITOR] Error alert delivery failed'));
+}
 const postImageGenerator = new ImageGenerator({
   siteName: "Tomilo Lib",
   siteUrl: config.siteUrl,
@@ -1008,6 +1014,13 @@ async function fetchHiddenChapterUpdatesTitles() {
   return json.data;
 }
 
+function fetchAllChapterUpdates() {
+  return fetchChapterUpdates({
+    fetchPublic: fetchLatestUpdatesTitles,
+    fetchHidden: fetchHiddenChapterUpdatesTitles,
+  });
+}
+
 function animeEpisodeKey(row) {
   const slug = String(row?.titleSlug || '').trim();
   const number = Number(row?.episodeNumber);
@@ -1137,14 +1150,7 @@ async function fetchTitleBySlug(slug) {
  */
 async function prewarmQuietHoursCovers() {
   if (!config.useEnhancedCovers) return;
-  const publicUpdates = await fetchLatestUpdatesTitles();
-  let hiddenUpdates = [];
-  try {
-    hiddenUpdates = await fetchHiddenChapterUpdatesTitles();
-  } catch (error) {
-    console.warn("Hidden chapter updates skipped:", error.message);
-  }
-  const updates = [...publicUpdates, ...hiddenUpdates];
+  const updates = await fetchAllChapterUpdates();
   let prepared = 0;
   for (const row of updates) {
     if (prepared >= config.maxPublicNotificationsPerRun) break;
@@ -1250,7 +1256,7 @@ async function run() {
   // ======== Обработка новых глав ========
   // Сообщения отправляем как обычно. Если тайтл создан сегодня — в сообщении пишем "Новый тайтл на сайте"
   // и в течение дня обновляем это сообщение при добавлении новых глав.
-  const updates = await fetchLatestUpdatesTitles();
+  const updates = await fetchAllChapterUpdates();
   const toPost = [];
   let maxSeen = lastProcessed;
   let maxNotified = lastProcessed;
@@ -1697,6 +1703,7 @@ async function loop() {
     }
   } catch (e) {
     console.error("Run error:", e.message);
+    reportMonitorError('Рассылка новых глав');
   }
   setTimeout(loop, config.pollIntervalMs);
 }
@@ -1706,6 +1713,7 @@ async function personalLoop() {
     await runPersonalNotifications(bot);
   } catch (error) {
     console.error('[PERSONAL] Run error:', error.message);
+    reportMonitorError('Личные уведомления');
   }
   setTimeout(personalLoop, config.pollIntervalMs);
 }
@@ -1715,6 +1723,7 @@ async function reportsLoop() {
     await runReportNotifications(bot);
   } catch (e) {
     console.error('[REPORTS] Run error:', e.message);
+    reportMonitorError('Доставка жалоб');
   }
   setTimeout(reportsLoop, config.reportsPollIntervalMs);
 }
@@ -1767,6 +1776,7 @@ async function main() {
     [config.telegramEnabled && "Telegram", config.maxEnabled && "MAX"].filter(Boolean).join(" + "),
   );
   if (!(await checkChat())) process.exit(1);
+  serverMonitor?.start();
   if (config.telegramEnabled) {
     setupProfileBot(bot, { apiFetch, config, waitForMessageSlot });
     bot.on('polling_error', error => console.error('[PROFILE] Polling error:', error.code || 'unknown'));
