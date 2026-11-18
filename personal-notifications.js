@@ -163,7 +163,7 @@ async function sendPersonalNotification(bot, item) {
   return true;
 }
 
-async function runPersonalNotifications(bot) {
+async function runPersonalNotifications(bot, afterDelivery) {
   if (!config.notifyPersonalBookmarks) return;
   if (personalQueueUnsupported) return;
   if (!config.botApiSecret) {
@@ -191,11 +191,13 @@ async function runPersonalNotifications(bot) {
   if (!items.length) return;
 
   const delivered = [];
+  const chats = new Set();
   for (const item of items.slice(0, config.maxPersonalNotificationsPerRun)) {
     if (!item.chatId || !item.notificationId) continue;
     try {
       if (!await sendPersonalNotification(bot, item)) continue;
       delivered.push(item.notificationId);
+      chats.add(item.chatId);
       console.log(
         `[PERSONAL] Sent: ${item.titleName} ch.${item.chapterNumber} → ${item.chatId}`,
       );
@@ -206,6 +208,11 @@ async function runPersonalNotifications(bot) {
         msg.slice(0, 160),
       );
     }
+  }
+
+  for (const chat of chats) {
+    try { await afterDelivery?.(chat); }
+    catch { console.error('[MONITOR] Summary refresh failed'); }
   }
 
   if (delivered.length > 0) {

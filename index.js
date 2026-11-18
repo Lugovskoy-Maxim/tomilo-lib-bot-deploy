@@ -1710,7 +1710,7 @@ async function loop() {
 
 async function personalLoop() {
   try {
-    await runPersonalNotifications(bot);
+    await runPersonalNotifications(bot, serverMonitor?.afterBookmarks);
   } catch (error) {
     console.error('[PERSONAL] Run error:', error.message);
     reportMonitorError('Личные уведомления');

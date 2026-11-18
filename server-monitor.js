@@ -51,17 +51,53 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
   const deliver = async text => {
     if (!chatId()) return false;
     await send(chatId(), text.slice(0, 4000));
+    state.summaryPending = true;
+    save();
     return true;
   };
-  const summary = () => [
-    '📊 Tomilo — состояние сервера и сайтов',
-    new Date(now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' МСК',
-    ...latest.map(c => `${c.ok ? '✅' : '⚠️'} ${c.label}: ${c.detail}`),
-    ...hostDetails,
-    ...Object.entries(state.errors).filter(([, v]) => v.count > 0).map(([k, v]) => `⚠️ ${k}: ${v.count} ошибок за период`),
-  ].join('\n');
+  const summary = () => {
+    const checks = Object.fromEntries(latest.map(check => [check.key, check]));
+    const status = key => checks[key]?.ok ? '' : '⚠️ ';
+    const site = key => {
+      const check = checks[key];
+      return check ? status(key) + (check.ok ? check.detail.split(', ').at(-1) : check.detail) : '—';
+    };
+    const errors = Object.values(state.errors).reduce((total, entry) => total + entry.count, 0);
+    return [
+      '📊 Tomilo · ' + new Date(now()).toLocaleTimeString('ru-RU', {
+        timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit',
+      }) + ' МСК',
+      '',
+      `Lib ${site('lib')} · Ani ${site('ani')}`,
+      `API ${site('api')} · Ani health ${site('ani-health')}`,
+      '',
+      ...(checks['host-data']?.ok ? [
+        `${status('cpu')}CPU ${checks.cpu.detail} · ${status('ram')}RAM ${checks.ram.detail.split(' (')[0]}`,
+        `${status('disk')}Диск ${checks.disk.detail} · ${status('swap')}Swap ${checks.swap.detail}`,
+        ...hostDetails,
+      ] : ['⚠️ Нет свежих метрик VPS']),
+      ...(errors ? [`⚠️ Ошибок бота за период: ${errors}`] : []),
+    ].join('\n');
+  };
+  let queue = Promise.resolve();
+  function serialize(work) {
+    const next = queue.then(work);
+    queue = next.catch(() => {});
+    return next;
+  }
+  async function publishSummary() {
+    const id = chatId();
+    const previous = state.summaryMessage;
+    const message = await send(id, summary());
+    state.summaryMessage = { chatId: id, id: message?.message_id };
+    state.summaryPending = false;
+    save();
+    if (previous?.id && String(previous.chatId) === String(id) && bot.deleteMessage) {
+      await bot.deleteMessage(id, previous.id).catch(() => {});
+    }
+  }
 
-  async function tick() {
+  async function tick(force = false) {
     if (busy || !chatId()) return;
     busy = true;
     try {
@@ -78,8 +114,7 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
       latest = [...sites, ...resourceChecks(metrics, now())];
       if (latest.find(c => c.key === 'host-data')?.ok) {
         hostDetails = [
-          `Аптайм VPS: ${Math.floor(metrics.uptime / 3600)} ч; ядер CPU: ${metrics.cpu?.cores ?? '—'}`,
-          `Load average: ${(metrics.cpu?.loadAvg || []).map(n => Number(n).toFixed(2)).join(' / ')}`,
+          `VPS ${Math.floor(metrics.uptime / 3600)} ч · ${metrics.cpu?.cores ?? '—'} ядер`,
           `Сеть: ↓ ${((metrics.network?.rxBytesPerSecond || 0) / 1024).toFixed(1)} КБ/с, ↑ ${((metrics.network?.txBytesPerSecond || 0) / 1024).toFixed(1)} КБ/с`,
         ];
         if (Number.isFinite(state.hostUptime) && metrics.uptime + 60 < state.hostUptime) {
@@ -100,8 +135,10 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
           if (await deliver(`✅ Восстановление — ${c.label}: ${c.detail}`)) { v.alerted = false; save(); }
         }
       }
-      if (!state.lastSummary || now() - state.lastSummary >= HOUR) {
-        if (await deliver(summary())) {
+      const hourly = !state.lastSummary || now() - state.lastSummary >= HOUR;
+      if (force || hourly || state.summaryPending || !state.summaryMessage) {
+        await publishSummary();
+        if (hourly) {
           state.lastSummary = now();
           for (const v of Object.values(state.errors)) v.count = 0;
         }
@@ -111,12 +148,13 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
   }
 
   // Categories are fixed by the caller. Never forward raw exceptions or tokens.
-  async function reportError(category) {
+  async function recordError(category) {
     const v = state.errors[category] ||= { count: 0, lastAlert: 0 };
     v.count++; save();
     if (!v.lastAlert || now() - v.lastAlert >= 15 * 60000) {
       if (await deliver(`⚠️ Ошибка бота: ${category}.\nПовторы объединяются; подробности доступны в серверном журнале.`)) {
         v.lastAlert = now(); save();
+        if (latest.length) await publishSummary();
       }
     }
   }
@@ -132,18 +170,24 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
     if (!authorized) return;
     if (!chatId()) { state.chatId = String(msg.from.id); save(); }
     try {
-      if (latest.length) await deliver(summary());
-      else await tick();
+      await serialize(() => tick(true));
     } catch { console.error('[MONITOR] Status delivery failed'); }
   }
   function start() {
     bot.on('message', onMessage);
     const loop = async () => {
-      try { await tick(); } catch { console.error('[MONITOR] Check or delivery failed; will retry'); }
+      try { await serialize(tick); } catch { console.error('[MONITOR] Check or delivery failed; will retry'); }
       setTimeout(loop, 60000).unref();
     };
     loop();
   }
-  return { tick, reportError, onMessage, start, summary };
+  return {
+    tick: () => serialize(tick),
+    reportError: category => serialize(() => recordError(category)),
+    afterBookmarks: id => String(id) === String(chatId()) ? serialize(async () => {
+      if (latest.length) await publishSummary();
+    }) : undefined,
+    onMessage, start, summary,
+  };
 }
 module.exports = { createMonitor, resourceChecks, probe };

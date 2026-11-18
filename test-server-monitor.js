@@ -14,10 +14,17 @@ function fixture(t) {
   const config = { monitorChatId: '123', monitorUsername: 'tomilodev',
     monitorStatePath: path.join(dir, 'state.json'), monitorMetricsPath: path.join(dir, 'metrics.json'),
     monitorTargets: [{ key: 'lib', label: 'Lib', url: 'https://example.com/' }] };
-  const deps = { config, bot: {}, now: () => time,
-    fetcher: async () => ({ ok: status === 200, status }), send: async (id, text) => calls.push({ id, text }) };
-  return { config, calls, deps, monitor: createMonitor(deps),
-    status: n => { status = n; }, advance: n => { time += n; } };
+  const deleted = [];
+  const refreshMetrics = () => fs.writeFileSync(config.monitorMetricsPath, JSON.stringify({
+    sampledAt: new Date(time), uptime: 86400, cpu: { usage: 20 },
+    memory: { percentage: 30 }, disk: { percentage: 40, available: 10 * 1024 ** 3 },
+    swap: { percentage: 0 },
+  }));
+  refreshMetrics();
+  const deps = { config, bot: { deleteMessage: async (id, message) => deleted.push([id, message]) }, now: () => time,
+    fetcher: async () => ({ ok: status === 200, status }), send: async (id, text) => ({ message_id: calls.push({ id, text }) }) };
+  return { config, calls, deleted, deps, monitor: createMonitor(deps),
+    status: n => { status = n; }, advance: n => { time += n; refreshMetrics(); } };
 }
 
 test('summary is hourly and schedule survives restart', async t => {
@@ -39,6 +46,8 @@ test('confirmed outage and recovery are deduplicated independently of summary', 
   assert.equal(f.calls.filter(c => c.text.startsWith('🚨 Lib')).length, 1);
   f.status(200); await f.monitor.tick(); await f.monitor.tick(); await f.monitor.tick();
   assert.equal(f.calls.filter(c => c.text.startsWith('✅ Восстановление — Lib')).length, 1);
+  assert.match(f.calls.at(-1).text, /^📊/);
+  assert.equal(f.deleted.length, 2);
 });
 
 test('failed Telegram send is retried and never marked as delivered', async t => {
