@@ -5,6 +5,32 @@ const HOUR = 3600000;
 const pct = n => Number.isFinite(n) ? `${n.toFixed(1)}%` : 'нет данных';
 const gib = n => Number.isFinite(n) ? `${(n / 1024 ** 3).toFixed(2)} ГБ` : 'нет данных';
 
+function yesterdayMoscow(now) {
+  const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(now);
+  return new Date(Date.parse(day + 'T00:00:00+03:00') - 86400000 + 10800000).toISOString().slice(0, 10);
+}
+
+function dailyActivity(file, now) {
+  const date = yesterdayMoscow(now);
+  const label = date.split('-').slice(1).reverse().join('.');
+  try {
+    const stats = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const keys = ['users', 'chapters', 'titles', 'anime', 'episodes'];
+    if (stats.date !== date || !keys.every(key => Number.isSafeInteger(stats[key]) && stats[key] >= 0)) {
+      throw new Error('Missing daily snapshot');
+    }
+    const count = key => stats[key].toLocaleString('ru-RU');
+    return [
+      `📅 Вчера · ${label} (МСК)`,
+      `👤 Новых пользователей: ${count('users')}`,
+      `📚 Манга: тайтлов ${count('titles')} · глав ${count('chapters')}`,
+      `🎬 Аниме: тайтлов ${count('anime')} · серий ${count('episodes')}`,
+    ];
+  } catch {
+    return [`📅 Вчера · ${label} (МСК)`, 'Статистика пока недоступна'];
+  }
+}
+
 async function probe(url, fetcher = fetch) {
   const start = Date.now();
   try {
@@ -76,6 +102,8 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
         `${status('disk')}Диск ${checks.disk.detail} · ${status('swap')}Swap ${checks.swap.detail}`,
         ...hostDetails,
       ] : ['⚠️ Нет свежих метрик VPS']),
+      '',
+      ...dailyActivity(path.join(path.dirname(config.monitorMetricsPath), 'daily-activity.json'), now()),
       ...(errors ? [`⚠️ Ошибок бота за период: ${errors}`] : []),
     ].join('\n');
   };
@@ -91,6 +119,7 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
     const message = await send(id, summary());
     state.summaryMessage = { chatId: id, id: message?.message_id };
     state.summaryPending = false;
+    state.summaryVersion = 2;
     save();
     if (previous?.id && String(previous.chatId) === String(id) && bot.deleteMessage) {
       await bot.deleteMessage(id, previous.id).catch(() => {});
@@ -136,7 +165,7 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
         }
       }
       const hourly = !state.lastSummary || now() - state.lastSummary >= HOUR;
-      if (force || hourly || state.summaryPending || !state.summaryMessage) {
+      if (force || hourly || state.summaryPending || state.summaryVersion !== 2) {
         await publishSummary();
         if (hourly) {
           state.lastSummary = now();
@@ -190,4 +219,4 @@ function createMonitor({ bot, config, send = (id, text) => bot.sendMessage(id, t
     onMessage, start, summary,
   };
 }
-module.exports = { createMonitor, resourceChecks, probe };
+module.exports = { createMonitor, resourceChecks, probe, dailyActivity, yesterdayMoscow };
